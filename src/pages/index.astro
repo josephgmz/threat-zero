@@ -1,11 +1,97 @@
 ---
-import Welcome from '../components/Welcome.astro';
-import Layout from '../layouts/Layout.astro';
-
-// Welcome to Astro! Wondering what to do next? Check out the Astro documentation at https://docs.astro.build
-// Don't want to use any of this? Delete everything in this file, the `assets`, `components`, and `layouts` directories, and start fresh.
+// src/pages/index.astro
+import BaseLayout from '../layouts/BaseLayout.astro';
 ---
 
-<Layout>
-	<Welcome />
-</Layout>
+<BaseLayout title="Inicio">
+    <style>
+        .hero-section {
+            padding: 60px 20px;
+            text-align: center;
+            background-color: var(--surface-color);
+            border: 1px solid rgba(255,255,255,0.05);
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            
+            /* CORRECCIÓN: Margen positivo para separar la tarjeta del banner */
+            margin-top: 40px; 
+        }
+
+        .hero-section h2 {
+            color: var(--text-primary);
+            font-size: 2rem;
+            margin-bottom: 20px;
+        }
+
+        .hero-section p {
+            max-width: 700px;
+            margin: 0 auto 40px;
+            color: var(--text-secondary);
+            font-size: 1.1rem;
+        }
+
+        .cta-button {
+            display: inline-block;
+            padding: 15px 40px;
+            background-color: var(--accent-color);
+            color: #121212;
+            text-decoration: none;
+            border-radius: 50px;
+            font-weight: bold;
+            font-size: 1.2rem;
+            transition: all 0.3s ease;
+        }
+
+        .cta-button:hover {
+            background-color: #00BFB3; 
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(0, 224, 210, 0.4); 
+        }
+
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 30px;
+            margin-top: 50px;
+        }
+
+        .info-card {
+            background-color: var(--surface-color);
+            border: 1px solid rgba(255,255,255,0.05);
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+        }
+
+        .info-card h3 {
+            margin-top: 0;
+            color: var(--accent-color);
+        }
+
+        .info-card p {
+            color: var(--text-secondary);
+            margin-bottom: 0;
+        }
+    </style>
+
+    <div class="hero-section">
+        <h2>Protección de la Organización</h2>
+        <p>Complete este formulario anual para garantizar la seguridad de nuestros sistemas y datos. Su participación es crucial para nuestra defensa colectiva contra las amenazas cibernéticas.</p>
+        <a href="/formulario" class="cta-button">Iniciar Formulario</a>
+    </div>
+
+    <div class="info-grid">
+        <div class="info-card">
+            <h3>¿Por qué es importante?</h3>
+            <p>La seguridad comienza con usted. Este formulario nos ayuda a evaluar nuestra postura de seguridad actual y a identificar áreas de mejora en toda la organización.</p>
+        </div>
+        <div class="info-card">
+            <h3>Privacidad</h3>
+            <p>Sus respuestas son confidenciales y se utilizarán exclusivamente para mejorar las medidas de ciberseguridad corporativas. No se recopilarán datos personales no relacionados.</p>
+        </div>
+        <div class="info-card">
+            <h3>Tiempo estimado</h3>
+            <p>Completar el formulario completo le llevará aproximadamente entre 10 y 15 minutos. No es necesario terminarlo de una sola vez.</p>
+        </div>
+    </div>
+</BaseLayout>
