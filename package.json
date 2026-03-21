@@ -12,6 +12,12 @@
     "astro": "astro"
   },
   "dependencies": {
-    "astro": "^6.0.7"
+    "@astrojs/node": "^10.0.3",
+    "astro": "^6.0.7",
+    "bcrypt": "^6.0.0",
+    "mysql2": "^3.20.0"
+  },
+  "devDependencies": {
+    "@types/bcrypt": "^6.0.0"
   }
 }

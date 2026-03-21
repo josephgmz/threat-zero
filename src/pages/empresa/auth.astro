@@ -1,0 +1,1004 @@
+---
+// src/pages/empresa/auth.astro
+// Login y Registro de empresas — Threat Zero
+---
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Threat Zero — Acceso Empresarial</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800&family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg-base:       #0a0b0d;
+      --bg-surface:    #0f1114;
+      --bg-card:       #13161a;
+      --bg-input:      #0f1114;
+      --border:        #1e2329;
+      --border-focus:  #00e5a060;
+
+      --accent:        #00e5a0;
+      --accent-dim:    #00c98a;
+      --accent-faint:  #00e5a010;
+      --accent-glow:   #00e5a035;
+
+      --danger:        #ff4d6a;
+      --danger-faint:  #ff4d6a15;
+
+      --text-primary:  #eef0f3;
+      --text-secondary:#8a9099;
+      --text-muted:    #4a5260;
+
+      --font-display:  'Outfit', sans-serif;
+      --font-mono:     'Space Mono', monospace;
+      --font-body:     'DM Sans', sans-serif;
+
+      --radius-sm: 6px;
+      --radius-md: 12px;
+      --radius-lg: 20px;
+    }
+
+    html, body {
+      height: 100%;
+      background: var(--bg-base);
+      color: var(--text-primary);
+      font-family: var(--font-body);
+    }
+
+    /* ── LAYOUT ── */
+    .auth-wrapper {
+      min-height: 100vh;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+    }
+
+    /* ── PANEL IZQUIERDO (decorativo) ── */
+    .panel-left {
+      position: relative;
+      background: var(--bg-surface);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 2.5rem;
+      overflow: hidden;
+    }
+
+    /* Grid de fondo */
+    .panel-left::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(var(--border) 1px, transparent 1px),
+        linear-gradient(90deg, var(--border) 1px, transparent 1px);
+      background-size: 40px 40px;
+      mask-image: radial-gradient(ellipse 70% 70% at 40% 50%, black, transparent);
+      opacity: 0.5;
+      pointer-events: none;
+    }
+
+    /* Blob verde */
+    .panel-left::after {
+      content: '';
+      position: absolute;
+      top: 20%;
+      left: 30%;
+      width: 500px;
+      height: 500px;
+      background: radial-gradient(circle, #00e5a018 0%, transparent 65%);
+      pointer-events: none;
+      animation: pulse 7s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); opacity: 0.7; }
+      50%       { transform: scale(1.1); opacity: 1; }
+    }
+
+    .panel-logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      position: relative;
+      z-index: 1;
+      text-decoration: none;
+    }
+
+    .logo-icon {
+      width: 36px;
+      height: 36px;
+      background: var(--accent);
+      border-radius: 8px;
+      display: grid;
+      place-items: center;
+    }
+
+    .logo-icon svg {
+      width: 20px;
+      height: 20px;
+      fill: var(--bg-base);
+    }
+
+    .logo-text {
+      font-family: var(--font-display);
+      font-weight: 800;
+      font-size: 1.2rem;
+      color: var(--text-primary);
+    }
+
+    .logo-text span { color: var(--accent); }
+
+    /* Contenido central del panel */
+    .panel-center {
+      position: relative;
+      z-index: 1;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 2rem;
+    }
+
+    .panel-headline {
+      font-family: var(--font-display);
+      font-size: clamp(1.8rem, 2.5vw, 2.6rem);
+      font-weight: 800;
+      line-height: 1.15;
+      letter-spacing: -0.03em;
+    }
+
+    .panel-headline .hl { color: var(--accent); }
+
+    .panel-sub {
+      color: var(--text-secondary);
+      font-size: 0.95rem;
+      line-height: 1.7;
+      max-width: 380px;
+    }
+
+    /* Mini stats */
+    .panel-stats {
+      display: flex;
+      flex-direction: column;
+      gap: 0.85rem;
+    }
+
+    .stat-row {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 0.85rem 1.1rem;
+    }
+
+    .stat-icon {
+      width: 36px;
+      height: 36px;
+      background: var(--accent-faint);
+      border: 1px solid var(--accent-glow);
+      border-radius: var(--radius-sm);
+      display: grid;
+      place-items: center;
+      flex-shrink: 0;
+    }
+
+    .stat-icon svg {
+      width: 16px;
+      height: 16px;
+      stroke: var(--accent);
+      fill: none;
+      stroke-width: 1.8;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .stat-info strong {
+      font-family: var(--font-display);
+      font-size: 0.9rem;
+      font-weight: 700;
+      display: block;
+    }
+
+    .stat-info span {
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+    }
+
+    .panel-footer {
+      position: relative;
+      z-index: 1;
+      font-family: var(--font-mono);
+      font-size: 0.65rem;
+      color: var(--text-muted);
+    }
+
+    /* ── PANEL DERECHO (formulario) ── */
+    .panel-right {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2.5rem;
+    }
+
+    .auth-box {
+      width: 100%;
+      max-width: 420px;
+    }
+
+    /* ── TABS ── */
+    .tabs {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 4px;
+      margin-bottom: 2rem;
+    }
+
+    .tab-btn {
+    text-decoration: none;
+      padding: 0.65rem;
+      border: none;
+      border-radius: calc(var(--radius-md) - 4px);
+      background: transparent;
+      color: var(--text-secondary);
+      font-family: var(--font-body);
+      font-size: 0.875rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .tab-btn.active {
+      text-decoration: none;
+      background: var(--bg-card);
+      color: var(--text-primary);
+      box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+    }
+
+    /* ── FORMULARIOS ── */
+    .form-panel { display: none; }
+    .form-panel.active { display: block; }
+
+    .form-title {
+      font-family: var(--font-display);
+      font-size: 1.5rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      margin-bottom: 0.35rem;
+    }
+
+    .form-subtitle {
+      font-size: 0.85rem;
+      color: var(--text-secondary);
+      margin-bottom: 1.75rem;
+      line-height: 1.5;
+    }
+
+    .form-group {
+      margin-bottom: 1rem;
+    }
+
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.75rem;
+    }
+
+    label {
+      display: block;
+      font-size: 0.8rem;
+      font-weight: 500;
+      color: var(--text-secondary);
+      margin-bottom: 0.4rem;
+    }
+
+    .input-wrap {
+      position: relative;
+    }
+
+    .input-icon {
+      position: absolute;
+      left: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 16px;
+      height: 16px;
+      stroke: var(--text-muted);
+      fill: none;
+      stroke-width: 1.8;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      pointer-events: none;
+      transition: stroke 0.2s;
+    }
+
+    input {
+      width: 100%;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 0.65rem 0.85rem 0.65rem 2.4rem;
+      color: var(--text-primary);
+      font-family: var(--font-body);
+      font-size: 0.9rem;
+      transition: border-color 0.2s, box-shadow 0.2s;
+      outline: none;
+    }
+
+    input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-faint);
+    }
+
+    input:focus + .input-icon,
+    .input-wrap:focus-within .input-icon {
+      stroke: var(--accent);
+    }
+
+    input::placeholder { color: var(--text-muted); }
+
+    /* Input con ícono a la derecha (toggle contraseña) */
+    .input-with-toggle input { padding-right: 2.8rem; }
+
+    .toggle-pass {
+      position: absolute;
+      right: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 4px;
+      color: var(--text-muted);
+      transition: color 0.2s;
+      display: flex;
+      align-items: center;
+    }
+
+    .toggle-pass:hover { color: var(--accent); }
+    .toggle-pass svg {
+      width: 16px;
+      height: 16px;
+      stroke: currentColor;
+      fill: none;
+      stroke-width: 1.8;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    /* Hint del código de empresa */
+    .input-hint {
+      font-family: var(--font-mono);
+      font-size: 0.68rem;
+      color: var(--text-muted);
+      margin-top: 0.35rem;
+    }
+
+    /* Error inline */
+    .field-error {
+      font-size: 0.75rem;
+      color: var(--danger);
+      margin-top: 0.3rem;
+      display: none;
+    }
+
+    .field-error.show { display: block; }
+
+    /* Alert de error general */
+    .alert {
+      display: none;
+      align-items: center;
+      gap: 0.65rem;
+      background: var(--danger-faint);
+      border: 1px solid rgba(255,77,106,0.3);
+      border-radius: var(--radius-sm);
+      padding: 0.75rem 1rem;
+      margin-bottom: 1.25rem;
+      font-size: 0.82rem;
+      color: var(--danger);
+    }
+
+    .alert.show { display: flex; }
+
+    .alert svg {
+      width: 15px;
+      height: 15px;
+      stroke: currentColor;
+      fill: none;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      flex-shrink: 0;
+    }
+
+    /* Divisor */
+    .divider {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin: 1.25rem 0;
+      color: var(--text-muted);
+      font-size: 0.75rem;
+    }
+
+    .divider::before,
+    .divider::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+
+    /* Botón submit */
+    .btn-submit {
+      width: 100%;
+      padding: 0.8rem;
+      background: var(--accent);
+      color: var(--bg-base);
+      border: none;
+      border-radius: var(--radius-sm);
+      font-family: var(--font-display);
+      font-size: 0.95rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background 0.2s, box-shadow 0.2s, opacity 0.2s;
+      margin-top: 0.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .btn-submit:hover:not(:disabled) {
+      background: var(--accent-dim);
+      box-shadow: 0 0 24px var(--accent-glow);
+    }
+
+    .btn-submit:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    /* Spinner */
+    .spinner {
+      width: 16px;
+      height: 16px;
+      border: 2px solid rgba(0,0,0,0.2);
+      border-top-color: var(--bg-base);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      display: none;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .btn-submit.loading .spinner { display: block; }
+    .btn-submit.loading .btn-label { display: none; }
+
+    /* Link de cambio de panel */
+    .switch-mode {
+      text-align: center;
+      font-size: 0.82rem;
+      color: var(--text-secondary);
+      margin-top: 1.25rem;
+    }
+
+    .switch-mode a {
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 500;
+    }
+
+    .switch-mode a:hover { text-decoration: underline; }
+
+    /* Password strength */
+    .pass-strength {
+      margin-top: 0.5rem;
+      display: none;
+    }
+
+    .pass-strength.show { display: block; }
+
+    .strength-bar {
+      height: 3px;
+      border-radius: 2px;
+      background: var(--border);
+      overflow: hidden;
+      margin-bottom: 0.3rem;
+    }
+
+    .strength-fill {
+      height: 100%;
+      border-radius: 2px;
+      transition: width 0.3s, background 0.3s;
+      width: 0;
+    }
+
+    .strength-text {
+      font-size: 0.72rem;
+      color: var(--text-muted);
+    }
+
+    /* ── ANIMACIÓN ENTRADA ── */
+    .auth-box {
+      animation: fade-up 0.5s ease both;
+    }
+
+    @keyframes fade-up {
+      from { opacity: 0; transform: translateY(16px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ── RESPONSIVE ── */
+    @media (max-width: 768px) {
+      .auth-wrapper { grid-template-columns: 1fr; }
+      .panel-left   { display: none; }
+      .panel-right  { padding: 1.5rem; align-items: flex-start; padding-top: 3rem; }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="auth-wrapper">
+
+    <!-- ── PANEL IZQUIERDO ── -->
+    <aside class="panel-left">
+      <a href="/" class="panel-logo">
+        <div class="logo-icon">
+          <svg viewBox="0 0 24 24"><path d="M12 2L3 7v5c0 5.25 3.75 10.15 9 11.25C17.25 22.15 21 17.25 21 12V7L12 2z"/></svg>
+        </div>
+        <span class="logo-text">Threat<span>Zero</span></span>
+      </a>
+
+      <div class="panel-center">
+        <div>
+          <h2 class="panel-headline">
+            Protege tu empresa<br/>
+            desde <span class="hl">adentro</span>
+          </h2>
+          <p class="panel-sub">
+            El 90% de los ciberataques exitosos empiezan por un error humano.
+            Threat Zero te ayuda a descubrirlos antes que los hackers.
+          </p>
+        </div>
+
+        <div class="panel-stats">
+          <div class="stat-row">
+            <div class="stat-icon">
+              <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            </div>
+            <div class="stat-info">
+              <strong>Gestión de empleados</strong>
+              <span>Registra y monitorea a todo tu equipo</span>
+            </div>
+          </div>
+
+          <div class="stat-row">
+            <div class="stat-icon">
+              <svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+            </div>
+            <div class="stat-info">
+              <strong>Dashboard en tiempo real</strong>
+              <span>Visualiza el nivel de riesgo por área</span>
+            </div>
+          </div>
+
+          <div class="stat-row">
+            <div class="stat-icon">
+              <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            </div>
+            <div class="stat-info">
+              <strong>Diagnóstico confidencial</strong>
+              <span>Cifrado de extremo a extremo</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <p class="panel-footer">© 2026 Threat Zero — Acceso empresarial seguro</p>
+    </aside>
+
+    <!-- ── PANEL DERECHO ── -->
+    <main class="panel-right">
+      <div class="auth-box">
+
+        <!-- Tabs -->
+        <div class="tabs" role="tablist">
+          <button class="tab-btn active" id="tab-login"    role="tab" onclick="switchTab('/empresa/auth')" ><a href="/empresa/auth">Iniciar sesión</a></button>
+          <button class="tab-btn"        id="tab-registro" role="tab" onclick="switchTab('/empresa/auth?tab=registro')"><a href="/empresa/auth?tab=registro">Registrarse</a></button>
+        </div>
+
+        <!-- ══ FORMULARIO: LOGIN ══ -->
+        <div class="form-panel active" id="panel-login">
+          <h1 class="form-title">Bienvenido de nuevo</h1>
+          <p class="form-subtitle">Ingresa con tu email y contraseña empresarial.</p>
+
+          <div class="alert" id="alert-login">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            <span id="alert-login-msg">Correo o contraseña incorrectos.</span>
+          </div>
+
+          <form id="form-login" novalidate>
+            <div class="form-group">
+              <label for="login-email">Correo empresarial</label>
+              <div class="input-wrap">
+                <input
+                  type="email"
+                  id="login-email"
+                  name="email"
+                  placeholder="admin@tuempresa.com"
+                  autocomplete="email"
+                  required
+                />
+                <svg class="input-icon" viewBox="0 0 24 24">
+                  <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+                  <polyline points="22,6 12,13 2,6"/>
+                </svg>
+              </div>
+              <div class="field-error" id="err-login-email">Ingresa un correo válido.</div>
+            </div>
+
+            <div class="form-group">
+              <label for="login-pass">Contraseña</label>
+              <div class="input-wrap input-with-toggle">
+                <input
+                  type="password"
+                  id="login-pass"
+                  name="password"
+                  placeholder="••••••••"
+                  autocomplete="current-password"
+                  required
+                />
+                <svg class="input-icon" viewBox="0 0 24 24">
+                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                  <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                </svg>
+                <button type="button" class="toggle-pass" onclick="togglePass('login-pass', this)" aria-label="Ver contraseña">
+                  <svg id="eye-login" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                </button>
+              </div>
+              <div class="field-error" id="err-login-pass">Ingresa tu contraseña.</div>
+            </div>
+
+            <button type="submit" class="btn-submit" id="btn-login">
+              <div class="spinner"></div>
+              <span class="btn-label">Entrar al panel</span>
+            </button>
+          </form>
+
+          <p class="switch-mode">
+            ¿No tienes cuenta? <a href="/empresa/auth?tab=registro" onclick="switchTab('registro'); return false;">Registra tu empresa</a>
+          </p>
+        </div>
+
+        <!-- ══ FORMULARIO: REGISTRO ══ -->
+        <div class="form-panel" id="panel-registro">
+          <h1 class="form-title">Registra tu empresa</h1>
+          <p class="form-subtitle">Crea una cuenta para comenzar a evaluar a tu equipo.</p>
+
+          <div class="alert" id="alert-registro">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            <span id="alert-registro-msg">Ocurrió un error al registrar.</span>
+          </div>
+
+          <form id="form-registro" novalidate>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label for="reg-codigo">Código de empresa</label>
+                <div class="input-wrap">
+                  <input
+                    type="text"
+                    id="reg-codigo"
+                    name="codigo"
+                    placeholder="Ej: EMP01"
+                    maxlength="10"
+                    required
+                  />
+                  <svg class="input-icon" viewBox="0 0 24 24">
+                    <rect x="2" y="7" width="20" height="14" rx="2" ry="2"/>
+                    <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>
+                  </svg>
+                </div>
+                <p class="input-hint">Máx. 10 caracteres, sin espacios.</p>
+                <div class="field-error" id="err-reg-codigo">El código es obligatorio.</div>
+              </div>
+
+              <div class="form-group">
+                <label for="reg-empleados">N.º empleados</label>
+                <div class="input-wrap">
+                  <input
+                    type="number"
+                    id="reg-empleados"
+                    name="cantidad_empleados"
+                    placeholder="10"
+                    min="1"
+                    required
+                  />
+                  <svg class="input-icon" viewBox="0 0 24 24">
+                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                    <circle cx="9" cy="7" r="4"/>
+                    <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                    <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                  </svg>
+                </div>
+                <div class="field-error" id="err-reg-empleados">Ingresa un número válido.</div>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="reg-nombre">Nombre de la empresa</label>
+              <div class="input-wrap">
+                <input
+                  type="text"
+                  id="reg-nombre"
+                  name="nombre"
+                  placeholder="Ej: Distribuidora Mazatlán S.A."
+                  maxlength="100"
+                  required
+                />
+                <svg class="input-icon" viewBox="0 0 24 24">
+                  <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+                  <polyline points="9 22 9 12 15 12 15 22"/>
+                </svg>
+              </div>
+              <div class="field-error" id="err-reg-nombre">El nombre es obligatorio.</div>
+            </div>
+
+            <div class="form-group">
+              <label for="reg-email">Correo de contacto</label>
+              <div class="input-wrap">
+                <input
+                  type="email"
+                  id="reg-email"
+                  name="email"
+                  placeholder="admin@tuempresa.com"
+                  autocomplete="email"
+                  required
+                />
+                <svg class="input-icon" viewBox="0 0 24 24">
+                  <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+                  <polyline points="22,6 12,13 2,6"/>
+                </svg>
+              </div>
+              <div class="field-error" id="err-reg-email">Ingresa un correo válido.</div>
+            </div>
+
+            <div class="form-group">
+              <label for="reg-pass">Contraseña</label>
+              <div class="input-wrap input-with-toggle">
+                <input
+                  type="password"
+                  id="reg-pass"
+                  name="password"
+                  placeholder="Mínimo 8 caracteres"
+                  autocomplete="new-password"
+                  required
+                  oninput="checkStrength(this.value)"
+                />
+                <svg class="input-icon" viewBox="0 0 24 24">
+                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                  <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                </svg>
+                <button type="button" class="toggle-pass" onclick="togglePass('reg-pass', this)" aria-label="Ver contraseña">
+                  <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                </button>
+              </div>
+              <div class="pass-strength" id="pass-strength">
+                <div class="strength-bar"><div class="strength-fill" id="strength-fill"></div></div>
+                <span class="strength-text" id="strength-text">Débil</span>
+              </div>
+              <div class="field-error" id="err-reg-pass">Mínimo 8 caracteres.</div>
+            </div>
+
+            <div class="form-group">
+              <label for="reg-pass2">Confirmar contraseña</label>
+              <div class="input-wrap input-with-toggle">
+                <input
+                  type="password"
+                  id="reg-pass2"
+                  name="password2"
+                  placeholder="Repite tu contraseña"
+                  autocomplete="new-password"
+                  required
+                />
+                <svg class="input-icon" viewBox="0 0 24 24">
+                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                  <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                </svg>
+                <button type="button" class="toggle-pass" onclick="togglePass('reg-pass2', this)" aria-label="Ver contraseña">
+                  <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                </button>
+              </div>
+              <div class="field-error" id="err-reg-pass2">Las contraseñas no coinciden.</div>
+            </div>
+
+            <button type="submit" class="btn-submit" id="btn-registro">
+              <div class="spinner"></div>
+              <span class="btn-label">Crear cuenta empresarial</span>
+            </button>
+          </form>
+
+          <p class="switch-mode">
+            ¿Ya tienes cuenta? <a href="/empresa/auth" onclick="switchTab('login'); return false;">Inicia sesión</a>
+          </p>
+        </div>
+
+      </div>
+    </main>
+  </div>
+
+  <script>
+    // @ts-nocheck
+    // ── TAB SWITCHING ──
+    function switchTab(tab) {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.form-panel').forEach(p => p.classList.remove('active'));
+      document.getElementById('tab-' + tab).classList.add('active');
+      document.getElementById('panel-' + tab).classList.add('active');
+      // Limpiar alertas
+      document.querySelectorAll('.alert').forEach(a => a.classList.remove('show'));
+    }
+
+    // Abrir tab según parámetro URL
+const params = new URLSearchParams(window.location.search);
+if (params.get('tab') === 'registro') {
+  switchTab('registro');
+}
+
+    // ── TOGGLE CONTRASEÑA ──
+    function togglePass(inputId, btn) {
+      const input = document.getElementById(inputId);
+      const isPass = input.type === 'password';
+      input.type = isPass ? 'text' : 'password';
+      // Ícono: ojo abierto / cerrado
+      btn.querySelector('svg').innerHTML = isPass
+        ? '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/>'
+        : '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>';
+    }
+
+    // ── PASSWORD STRENGTH ──
+    function checkStrength(val) {
+      const wrap = document.getElementById('pass-strength');
+      const fill = document.getElementById('strength-fill');
+      const text = document.getElementById('strength-text');
+      if (!val) { wrap.classList.remove('show'); return; }
+      wrap.classList.add('show');
+
+      let score = 0;
+      if (val.length >= 8)  score++;
+      if (val.length >= 12) score++;
+      if (/[A-Z]/.test(val)) score++;
+      if (/[0-9]/.test(val)) score++;
+      if (/[^A-Za-z0-9]/.test(val)) score++;
+
+      const levels = [
+        { pct: '20%', color: '#ff4d6a', label: 'Muy débil' },
+        { pct: '40%', color: '#ff4d6a', label: 'Débil' },
+        { pct: '60%', color: '#ffb347', label: 'Moderada' },
+        { pct: '80%', color: '#00e5a0', label: 'Fuerte' },
+        { pct: '100%', color: '#00e5a0', label: 'Muy fuerte' },
+      ];
+      const lvl = levels[Math.min(score, 4)];
+      fill.style.width = lvl.pct;
+      fill.style.background = lvl.color;
+      text.textContent = lvl.label;
+      text.style.color = lvl.color;
+    }
+
+    // ── VALIDACIÓN ──
+    function showError(id, show) {
+      document.getElementById(id).classList.toggle('show', show);
+    }
+
+    function validateEmail(email) {
+      return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+    }
+
+    // ── FORM LOGIN ──
+    document.getElementById('form-login').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = document.getElementById('login-email').value.trim();
+      const pass  = document.getElementById('login-pass').value;
+      let valid = true;
+
+      showError('err-login-email', !validateEmail(email));
+      showError('err-login-pass',  !pass);
+      if (!validateEmail(email) || !pass) return;
+
+      const btn = document.getElementById('btn-login');
+      btn.disabled = true;
+      btn.classList.add('loading');
+      document.getElementById('alert-login').classList.remove('show');
+
+      try {
+        const res = await fetch('/api/empresa/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password: pass })
+        });
+        const data = await res.json();
+
+        if (res.ok && data.success) {
+          // Redirigir al dashboard
+          window.location.href = '/empresa/dashboard';
+        } else {
+          document.getElementById('alert-login-msg').textContent =
+            data.message || 'Correo o contraseña incorrectos.';
+          document.getElementById('alert-login').classList.add('show');
+        }
+      } catch (err) {
+        document.getElementById('alert-login-msg').textContent =
+          'Error de conexión. Intenta de nuevo.';
+        document.getElementById('alert-login').classList.add('show');
+      } finally {
+        btn.disabled = false;
+        btn.classList.remove('loading');
+      }
+    });
+
+    // ── FORM REGISTRO ──
+    document.getElementById('form-registro').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const codigo    = document.getElementById('reg-codigo').value.trim().toUpperCase();
+      const nombre    = document.getElementById('reg-nombre').value.trim();
+      const empleados = parseInt(document.getElementById('reg-empleados').value);
+      const email     = document.getElementById('reg-email').value.trim();
+      const pass      = document.getElementById('reg-pass').value;
+      const pass2     = document.getElementById('reg-pass2').value;
+
+      // Validaciones
+      showError('err-reg-codigo',    !codigo || codigo.length > 10 || /\s/.test(codigo));
+      showError('err-reg-nombre',    !nombre);
+      showError('err-reg-empleados', !empleados || empleados < 1);
+      showError('err-reg-email',     !validateEmail(email));
+      showError('err-reg-pass',      !pass || pass.length < 8);
+      showError('err-reg-pass2',     pass !== pass2);
+
+      if (!codigo || !nombre || !empleados || !validateEmail(email) ||
+          pass.length < 8 || pass !== pass2 || /\s/.test(codigo)) return;
+
+      const btn = document.getElementById('btn-registro');
+      btn.disabled = true;
+      btn.classList.add('loading');
+      document.getElementById('alert-registro').classList.remove('show');
+
+      try {
+        const res = await fetch('/api/empresa/registro', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ codigo, nombre, cantidad_empleados: empleados, email, password: pass })
+        });
+        const data = await res.json();
+
+        if (res.ok && data.success) {
+          window.location.href = '/empresa/dashboard';
+        } else {
+          document.getElementById('alert-registro-msg').textContent =
+            data.message || 'Ocurrió un error al registrar.';
+          document.getElementById('alert-registro').classList.add('show');
+        }
+      } catch (err) {
+        document.getElementById('alert-registro-msg').textContent =
+          'Error de conexión. Intenta de nuevo.';
+        document.getElementById('alert-registro').classList.add('show');
+      } finally {
+        btn.disabled = false;
+        btn.classList.remove('loading');
+      }
+    });
+  </script>
+</body>
+</html>
