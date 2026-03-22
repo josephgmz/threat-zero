@@ -1,0 +1,445 @@
+---
+// src/pages/empleado/bienvenida.astro
+// Pantalla de bienvenida del empleado con datos de su empresa
+export const prerender = false;
+
+import mysql from 'mysql2/promise';
+
+// Tipos
+interface Empleado {
+  id_usuario: number;
+  nombre: string;
+  mail_corporativo: string;
+}
+
+interface Empresa {
+  codigo: string;
+  nombre: string;
+  cantidad_empleados: number;
+  empleados_registrados: number;
+}
+
+// Verificar sesión
+const session = Astro.cookies.get('empleado_session');
+if (!session?.value) {
+  return Astro.redirect('/empleado/auth');
+}
+
+let empleado: Empleado | null = null;
+let empresa:  Empresa  | null = null;
+let yaHizoTest = false;
+
+try {
+  const sesionData = JSON.parse(session.value);
+  const conn = await mysql.createConnection({
+    host:     import.meta.env.DB_HOST     || 'localhost',
+    user:     import.meta.env.DB_USER     || 'root',
+    password: import.meta.env.DB_PASSWORD || '',
+    database: import.meta.env.DB_NAME     || 'threat_zero',
+  });
+
+  // Obtener datos del empleado y su empresa
+  const [rows] = await conn.execute<any[]>(`
+    SELECT u.id_usuario, u.nombre, u.mail_corporativo,
+           e.codigo, e.nombre AS empresa_nombre, e.cantidad_empleados,
+           fn_total_empleados_empresa(e.codigo) AS empleados_registrados
+    FROM usuarios u
+    JOIN empresas e ON u.codigo_empresa = e.codigo
+    WHERE u.id_usuario = ?
+  `, [sesionData.id_usuario]);
+
+  // Verificar si ya completó el test
+  const [diag] = await conn.execute<any[]>(
+    'SELECT id_diagnostico FROM diagnostico WHERE id_usuario = ? LIMIT 1',
+    [sesionData.id_usuario]
+  );
+
+  await conn.end();
+
+  if (rows.length > 0) {
+    const r = rows[0];
+    empleado   = { id_usuario: r.id_usuario, nombre: r.nombre, mail_corporativo: r.mail_corporativo };
+    empresa    = { codigo: r.codigo, nombre: r.empresa_nombre, cantidad_empleados: r.cantidad_empleados, empleados_registrados: r.empleados_registrados };
+    yaHizoTest = diag.length > 0;
+  }
+} catch (e) {
+  console.error('Error bienvenida:', e);
+}
+
+if (!empleado || !empresa) return Astro.redirect('/empleado/auth');
+---
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Threat Zero — Bienvenido, {empleado.nombre.split(' ')[0]}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800&family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg-base: #0a0b0d; --bg-surface: #0f1114; --bg-card: #13161a;
+      --border: #1e2329; --accent: #00e5a0; --accent-dim: #00c98a;
+      --accent-faint: #00e5a010; --accent-glow: #00e5a035;
+      --danger: #ff4d6a; --warning: #ffb347;
+      --text-primary: #eef0f3; --text-secondary: #8a9099; --text-muted: #4a5260;
+      --font-display: 'Outfit', sans-serif; --font-mono: 'Space Mono', monospace;
+      --font-body: 'DM Sans', sans-serif;
+      --radius-sm: 6px; --radius-md: 12px; --radius-lg: 20px;
+    }
+
+    html, body { min-height: 100%; background: var(--bg-base); color: var(--text-primary); font-family: var(--font-body); }
+
+    /* Grid de fondo */
+    body::before {
+      content: '';
+      position: fixed; inset: 0;
+      background-image:
+        linear-gradient(var(--border) 1px, transparent 1px),
+        linear-gradient(90deg, var(--border) 1px, transparent 1px);
+      background-size: 48px 48px;
+      mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, black, transparent);
+      opacity: 0.3; pointer-events: none; z-index: 0;
+    }
+
+    /* Blob */
+    body::after {
+      content: '';
+      position: fixed; top: -10%; right: -5%;
+      width: 600px; height: 600px;
+      background: radial-gradient(circle, #00e5a012 0%, transparent 65%);
+      pointer-events: none; z-index: 0;
+      animation: pulse 8s ease-in-out infinite;
+    }
+
+    @keyframes pulse { 0%,100%{opacity:.6;transform:scale(1)} 50%{opacity:1;transform:scale(1.08)} }
+
+    /* ── NAV ── */
+    nav {
+      position: relative; z-index: 10;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 clamp(1.5rem, 5vw, 3rem); height: 64px;
+      background: rgba(10,11,13,0.85); backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .nav-logo { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+    .logo-icon { width: 32px; height: 32px; background: var(--accent); border-radius: 7px; display: grid; place-items: center; }
+    .logo-icon svg { width: 18px; height: 18px; fill: var(--bg-base); }
+    .logo-text { font-family: var(--font-display); font-weight: 800; font-size: 1.1rem; }
+    .logo-text span { color: var(--accent); }
+
+    .nav-right { display: flex; align-items: center; gap: 0.75rem; }
+    .nav-user { font-size: 0.8rem; color: var(--text-secondary); }
+    .nav-user strong { color: var(--text-primary); }
+
+    .btn-logout {
+      background: transparent; border: 1px solid var(--border);
+      color: var(--text-muted); border-radius: var(--radius-sm);
+      padding: 0.4rem 0.85rem; font-size: 0.78rem; cursor: pointer;
+      font-family: var(--font-body); transition: all 0.2s;
+    }
+    .btn-logout:hover { border-color: var(--danger); color: var(--danger); }
+
+    /* ── MAIN ── */
+    main {
+      position: relative; z-index: 1;
+      max-width: 800px; margin: 0 auto;
+      padding: clamp(2.5rem, 6vw, 4rem) clamp(1.5rem, 5vw, 2rem);
+    }
+
+    /* Saludo */
+    .greeting {
+      margin-bottom: 2.5rem;
+      animation: fade-up 0.5s ease both;
+    }
+
+    .greeting-tag {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-family: var(--font-mono); font-size: 0.7rem; color: var(--accent);
+      letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 0.75rem;
+    }
+
+    .greeting-tag::before {
+      content: ''; width: 7px; height: 7px;
+      background: var(--accent); border-radius: 50%;
+      box-shadow: 0 0 8px var(--accent);
+      animation: blink 1.5s ease-in-out infinite;
+    }
+
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+    .greeting h1 {
+      font-family: var(--font-display);
+      font-size: clamp(1.8rem, 4vw, 2.6rem);
+      font-weight: 800; letter-spacing: -0.03em; line-height: 1.1;
+    }
+
+    .greeting h1 span { color: var(--accent); }
+
+    .greeting p {
+      color: var(--text-secondary); font-size: 1rem;
+      line-height: 1.65; margin-top: 0.75rem; max-width: 520px;
+    }
+
+    @keyframes fade-up { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:none} }
+
+    /* ── CARD EMPRESA ── */
+    .empresa-card {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: var(--radius-lg); padding: 1.75rem;
+      margin-bottom: 1.5rem; position: relative; overflow: hidden;
+      animation: fade-up 0.5s 0.1s ease both;
+    }
+
+    .empresa-card::before {
+      content: ''; position: absolute; top: 0; left: 0; right: 0;
+      height: 2px; background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    }
+
+    .empresa-card-header {
+      display: flex; align-items: center; gap: 1rem; margin-bottom: 1.25rem;
+    }
+
+    .empresa-avatar {
+      width: 52px; height: 52px; border-radius: var(--radius-md);
+      background: var(--accent-faint); border: 1px solid var(--accent-glow);
+      display: grid; place-items: center; flex-shrink: 0;
+    }
+
+    .empresa-avatar svg {
+      width: 24px; height: 24px; stroke: var(--accent);
+      fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round;
+    }
+
+    .empresa-info h3 {
+      font-family: var(--font-display); font-size: 1.15rem;
+      font-weight: 700; margin-bottom: 3px;
+    }
+
+    .empresa-codigo {
+      font-family: var(--font-mono); font-size: 0.7rem;
+      color: var(--text-muted); letter-spacing: 0.08em;
+    }
+
+    .empresa-stats {
+      display: grid; grid-template-columns: repeat(3, 1fr);
+      gap: 1px; background: var(--border);
+      border: 1px solid var(--border); border-radius: var(--radius-md);
+      overflow: hidden;
+    }
+
+    .emp-stat {
+      background: var(--bg-surface);
+      padding: 0.85rem; text-align: center;
+    }
+
+    .emp-stat-val {
+      font-family: var(--font-display); font-size: 1.4rem;
+      font-weight: 800; color: var(--accent); line-height: 1;
+      margin-bottom: 3px;
+    }
+
+    .emp-stat-lbl {
+      font-size: 0.72rem; color: var(--text-muted); line-height: 1.3;
+    }
+
+    /* ── CARD TEST ── */
+    .test-card {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: var(--radius-lg); padding: 1.75rem;
+      animation: fade-up 0.5s 0.2s ease both;
+    }
+
+    .test-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 1.25rem; flex-wrap: wrap; gap: 1rem;
+    }
+
+    .test-header h2 {
+      font-family: var(--font-display); font-size: 1.1rem; font-weight: 700;
+    }
+
+    /* Badge estado del test */
+    .test-status {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-family: var(--font-mono); font-size: 0.68rem;
+      letter-spacing: 0.06em; text-transform: uppercase;
+      padding: 4px 10px; border-radius: 100px;
+    }
+
+    .test-status.pendiente {
+      background: rgba(255,179,71,0.12); color: var(--warning);
+      border: 1px solid rgba(255,179,71,0.25);
+    }
+
+    .test-status.completado {
+      background: var(--accent-faint); color: var(--accent);
+      border: 1px solid var(--accent-glow);
+    }
+
+    .test-desc {
+      color: var(--text-secondary); font-size: 0.875rem;
+      line-height: 1.65; margin-bottom: 1.5rem;
+    }
+
+    /* Categorías que evalúa el test */
+    .test-topics {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 0.6rem; margin-bottom: 1.75rem;
+    }
+
+    .topic-chip {
+      display: flex; align-items: center; gap: 7px;
+      background: var(--bg-surface); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); padding: 0.55rem 0.75rem;
+      font-size: 0.78rem; color: var(--text-secondary);
+    }
+
+    .topic-chip::before {
+      content: ''; width: 6px; height: 6px;
+      border-radius: 50%; background: var(--accent); flex-shrink: 0;
+    }
+
+    .btn-test {
+      display: inline-flex; align-items: center; gap: 8px;
+      background: var(--accent); color: var(--bg-base);
+      border: none; border-radius: var(--radius-sm);
+      padding: 0.8rem 1.5rem; font-family: var(--font-display);
+      font-size: 0.95rem; font-weight: 700; cursor: pointer;
+      transition: all 0.2s; text-decoration: none;
+    }
+
+    .btn-test:hover:not(:disabled) {
+      background: var(--accent-dim);
+      box-shadow: 0 0 24px var(--accent-glow);
+    }
+
+    .btn-test:disabled {
+      opacity: 0.5; cursor: not-allowed;
+      background: var(--bg-surface); color: var(--text-muted);
+      border: 1px solid var(--border);
+    }
+
+    .btn-test svg {
+      width: 16px; height: 16px; stroke: currentColor;
+      fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
+    }
+
+    .test-completed-msg {
+      display: flex; align-items: center; gap: 0.75rem;
+      background: var(--accent-faint); border: 1px solid var(--accent-glow);
+      border-radius: var(--radius-sm); padding: 0.85rem 1rem;
+      font-size: 0.85rem; color: var(--accent);
+    }
+
+    .test-completed-msg svg {
+      width: 16px; height: 16px; stroke: var(--accent);
+      fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
+      flex-shrink: 0;
+    }
+  </style>
+</head>
+<body>
+  <nav>
+    <a href="/" class="nav-logo">
+      <div class="logo-icon">
+        <svg viewBox="0 0 24 24"><path d="M12 2L3 7v5c0 5.25 3.75 10.15 9 11.25C17.25 22.15 21 17.25 21 12V7L12 2z"/></svg>
+      </div>
+      <span class="logo-text">Threat<span>Zero</span></span>
+    </a>
+    <div class="nav-right">
+      <span class="nav-user">Hola, <strong>{empleado.nombre.split(' ')[0]}</strong></span>
+      <button class="btn-logout" id="btn-logout">Cerrar sesión</button>
+    </div>
+  </nav>
+
+  <main>
+    <!-- Saludo -->
+    <div class="greeting">
+      <div class="greeting-tag">Portal del empleado</div>
+      <h1>Bienvenido, <span>{empleado.nombre.split(' ')[0]}</span> 👋</h1>
+      <p>Estás registrado en la plataforma de evaluación de ciberseguridad de tu empresa. Aquí puedes ver la información de tu organización y acceder al test cuando estés listo.</p>
+    </div>
+
+    <!-- Card empresa -->
+    <div class="empresa-card">
+      <div class="empresa-card-header">
+        <div class="empresa-avatar">
+          <svg viewBox="0 0 24 24">
+            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+            <polyline points="9 22 9 12 15 12 15 22"/>
+          </svg>
+        </div>
+        <div class="empresa-info">
+          <h3>{empresa.nombre}</h3>
+          <span class="empresa-codigo">CÓDIGO: {empresa.codigo}</span>
+        </div>
+      </div>
+
+      <div class="empresa-stats">
+        <div class="emp-stat">
+          <div class="emp-stat-val">{empresa.cantidad_empleados}</div>
+          <div class="emp-stat-lbl">Cupos totales</div>
+        </div>
+        <div class="emp-stat">
+          <div class="emp-stat-val">{empresa.empleados_registrados}</div>
+          <div class="emp-stat-lbl">Empleados registrados</div>
+        </div>
+        <div class="emp-stat">
+          <div class="emp-stat-val">{Math.max(0, empresa.cantidad_empleados - empresa.empleados_registrados)}</div>
+          <div class="emp-stat-lbl">Cupos disponibles</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Card test -->
+    <div class="test-card">
+      <div class="test-header">
+        <h2>Test de Ciberseguridad</h2>
+        {yaHizoTest ? (
+          <span class="test-status completado">✓ Completado</span>
+        ) : (
+          <span class="test-status pendiente">Pendiente</span>
+        )}
+      </div>
+
+      <p class="test-desc">
+        El test evalúa tu conocimiento y comportamiento ante las amenazas digitales más comunes en el entorno laboral. Dura aproximadamente 5 minutos y tus respuestas son completamente confidenciales.
+      </p>
+
+      <div class="test-topics">
+        <div class="topic-chip">Phishing</div>
+        <div class="topic-chip">Malware</div>
+        <div class="topic-chip">Ransomware</div>
+        <div class="topic-chip">Contraseñas</div>
+        <div class="topic-chip">Ing. Social</div>
+        <div class="topic-chip">Redes WiFi</div>
+      </div>
+
+      {yaHizoTest ? (
+        <div class="test-completed-msg">
+          <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+          Ya completaste el test. Tu diagnóstico ha sido enviado a tu empresa. ¡Gracias por participar!
+        </div>
+      ) : (
+        <a href="/empleado/test" class="btn-test">
+          <svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          Comenzar test ahora
+        </a>
+      )}
+    </div>
+  </main>
+
+  <script>
+    // @ts-nocheck
+    document.getElementById('btn-logout').addEventListener('click', async () => {
+      await fetch('/api/empleado/logout', { method: 'POST' });
+      window.location.href = '/empleado/auth';
+    });
+  </script>
+</body>
+</html>

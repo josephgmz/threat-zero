@@ -2,6 +2,8 @@
 // Endpoint POST — Login de empresa
 // Verifica email + contraseña contra la tabla `empresas` en MySQL
 
+export const prerender = false;
+
 import type { APIRoute } from 'astro';
 import mysql from 'mysql2/promise';
 import bcrypt from 'bcrypt';

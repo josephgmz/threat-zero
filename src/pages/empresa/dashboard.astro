@@ -1,0 +1,873 @@
+---
+// src/pages/empresa/dashboard.astro
+// Dashboard de estadísticas — Threat Zero
+export const prerender = false;
+
+import mysql from 'mysql2/promise';
+
+// Verificar sesión de empresa
+const session = Astro.cookies.get('empresa_session');
+if (!session?.value) {
+  return Astro.redirect('/empresa/auth');
+}
+
+let sesionEmpresa: { codigo?: string; nombre?: string } = {};
+try {
+  sesionEmpresa = JSON.parse(session.value);
+} catch {
+  Astro.cookies.delete('empresa_session', { path: '/' });
+  return Astro.redirect('/empresa/auth');
+}
+
+if (!sesionEmpresa.codigo) {
+  Astro.cookies.delete('empresa_session', { path: '/' });
+  return Astro.redirect('/empresa/auth');
+}
+
+interface Empresa {
+  codigo: string;
+  nombre: string;
+  cantidad_empleados: number;
+  email: string;
+}
+
+interface Empleado {
+  id_usuario: number;
+  nombre: string;
+  mail_corporativo: string;
+  total_diagnosticos: number;
+  ultimo_puntaje: number | null;
+  nivel_riesgo: string | null;
+  fecha: string | null;
+}
+
+interface Stats {
+  total_empleados: number;
+  registrados: number;
+  completaron_test: number;
+  riesgo_critico: number;
+  riesgo_alto: number;
+  riesgo_medio: number;
+  riesgo_bajo: number;
+  promedio_puntaje: number;
+}
+
+interface Sugerencia {
+  id_sugerencia: number;
+  sugerencia: string;
+  nivel_riesgo: string;
+}
+
+let empresa: Empresa | null = null;
+let empleados: Empleado[] = [];
+let sugerencias: Sugerencia[] = [];
+let stats: Stats = {
+  total_empleados: 0, registrados: 0, completaron_test: 0,
+  riesgo_critico: 0, riesgo_alto: 0, riesgo_medio: 0, riesgo_bajo: 0,
+  promedio_puntaje: 0,
+};
+
+try {
+  const conn = await mysql.createConnection({
+    host:     import.meta.env.DB_HOST     || 'localhost',
+    user:     import.meta.env.DB_USER     || 'root',
+    password: import.meta.env.DB_PASSWORD || '',
+    database: import.meta.env.DB_NAME     || 'threat_zero',
+  });
+
+  // Datos de la empresa
+  const [empRows] = await conn.execute<any[]>(
+    'SELECT codigo, nombre, cantidad_empleados, email FROM empresas WHERE codigo = ?',
+    [sesionEmpresa.codigo]
+  );
+  if (empRows.length === 0) { await conn.end(); return Astro.redirect('/empresa/auth'); }
+  empresa = empRows[0];
+
+  // Reporte usando el stored procedure del schema
+  const [reporteRows] = await conn.execute<any[]>(
+    'CALL sp_reporte_empresa_detallado(?)', [sesionEmpresa.codigo]
+  );
+  empleados = (reporteRows[0] as any[]) || [];
+
+  // Stats agregadas
+  const [statsRows] = await conn.execute<any[]>(`
+    SELECT
+      e.cantidad_empleados                                    AS total_empleados,
+      fn_total_empleados_empresa(e.codigo)                    AS registrados,
+      COUNT(DISTINCT d.id_usuario)                            AS completaron_test,
+      SUM(CASE WHEN d.nivel_riesgo = 'critico' THEN 1 ELSE 0 END) AS riesgo_critico,
+      SUM(CASE WHEN d.nivel_riesgo = 'alto'    THEN 1 ELSE 0 END) AS riesgo_alto,
+      SUM(CASE WHEN d.nivel_riesgo = 'medio'   THEN 1 ELSE 0 END) AS riesgo_medio,
+      SUM(CASE WHEN d.nivel_riesgo = 'bajo'    THEN 1 ELSE 0 END) AS riesgo_bajo,
+      COALESCE(AVG(d.puntaje), 0)                             AS promedio_puntaje
+    FROM empresas e
+    LEFT JOIN usuarios u ON u.codigo_empresa = e.codigo
+    LEFT JOIN diagnostico d ON d.id_usuario = u.id_usuario
+    WHERE e.codigo = ?
+    GROUP BY e.codigo, e.cantidad_empleados
+  `, [sesionEmpresa.codigo]);
+
+  if (statsRows.length > 0) {
+    const r = statsRows[0];
+    stats = {
+      total_empleados:  r.total_empleados  || 0,
+      registrados:      r.registrados      || 0,
+      completaron_test: r.completaron_test || 0,
+      riesgo_critico:   r.riesgo_critico   || 0,
+      riesgo_alto:      r.riesgo_alto      || 0,
+      riesgo_medio:     r.riesgo_medio     || 0,
+      riesgo_bajo:      r.riesgo_bajo      || 0,
+      promedio_puntaje: Math.round(r.promedio_puntaje || 0),
+    };
+  }
+
+  // Determinar nivel predominante para traer sugerencias relevantes
+  const nivelQuery = stats.promedio_puntaje >= 75 ? 'critico'
+    : stats.promedio_puntaje >= 50 ? 'alto'
+    : stats.promedio_puntaje >= 25 ? 'medio' : 'bajo';
+
+  // Traer sugerencias del nivel predominante (máx. 4)
+  const [sugRows] = await conn.execute<any[]>(
+    'SELECT id_sugerencia, sugerencia, nivel_riesgo FROM sugerencias WHERE nivel_riesgo = ? LIMIT 4',
+    [nivelQuery]
+  );
+  sugerencias = sugRows;
+
+  await conn.end();
+} catch (e) {
+  console.error('[dashboard]', e);
+}
+
+if (!empresa) return Astro.redirect('/empresa/auth');
+
+// Nivel de riesgo general basado en promedio
+const nivelGeneral = stats.promedio_puntaje >= 75 ? 'Crítico'
+  : stats.promedio_puntaje >= 50 ? 'Alto'
+  : stats.promedio_puntaje >= 25 ? 'Medio' : 'Bajo';
+
+const colorNivel = stats.promedio_puntaje >= 75 ? '#ff4d6a'
+  : stats.promedio_puntaje >= 50 ? '#ff4d6a'
+  : stats.promedio_puntaje >= 25 ? '#ffb347' : '#00e5a0';
+
+const pct = (n: number) => stats.completaron_test > 0
+  ? Math.round((n / stats.completaron_test) * 100) : 0;
+
+// Serializar datos para las gráficas en JS
+const chartData = JSON.stringify({
+  riesgo: [stats.riesgo_critico, stats.riesgo_alto, stats.riesgo_medio, stats.riesgo_bajo],
+  puntajes: empleados.map(e => ({ nombre: e.nombre.split(' ')[0], puntaje: e.ultimo_puntaje ?? 0 })),
+});
+---
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Threat Zero — Dashboard {empresa.nombre}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800&family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg-base:      #0a0b0d;
+      --bg-surface:   #0f1114;
+      --bg-card:      #13161a;
+      --bg-card-hover:#181c21;
+      --border:       #1e2329;
+      --accent:       #00e5a0;
+      --accent-dim:   #00c98a;
+      --accent-faint: #00e5a010;
+      --accent-glow:  #00e5a035;
+      --danger:       #ff4d6a;
+      --warning:      #ffb347;
+      --text-primary: #eef0f3;
+      --text-secondary:#8a9099;
+      --text-muted:   #4a5260;
+      --font-display: 'Outfit', sans-serif;
+      --font-mono:    'Space Mono', monospace;
+      --font-body:    'DM Sans', sans-serif;
+      --radius-sm: 6px; --radius-md: 12px; --radius-lg: 20px;
+    }
+
+    html, body { min-height: 100%; background: var(--bg-base); color: var(--text-primary); font-family: var(--font-body); }
+
+    body::before {
+      content: ''; position: fixed; inset: 0;
+      background-image:
+        linear-gradient(var(--border) 1px, transparent 1px),
+        linear-gradient(90deg, var(--border) 1px, transparent 1px);
+      background-size: 48px 48px;
+      mask-image: radial-gradient(ellipse 100% 40% at 50% 0%, black, transparent);
+      opacity: 0.25; pointer-events: none; z-index: 0;
+    }
+
+    /* ── NAV ── */
+    nav {
+      position: sticky; top: 0; z-index: 50;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 clamp(1.5rem, 4vw, 3rem); height: 64px;
+      background: rgba(10,11,13,0.9); backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .nav-left { display: flex; align-items: center; gap: 1.25rem; }
+    .nav-logo { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+    .logo-icon { width: 32px; height: 32px; background: var(--accent); border-radius: 7px; display: grid; place-items: center; }
+    .logo-icon svg { width: 18px; height: 18px; fill: var(--bg-base); }
+    .logo-text { font-family: var(--font-display); font-weight: 800; font-size: 1.1rem; }
+    .logo-text span { color: var(--accent); }
+
+    .nav-divider { width: 1px; height: 20px; background: var(--border); }
+    .nav-empresa { font-size: 0.82rem; color: var(--text-secondary); }
+    .nav-empresa strong { color: var(--text-primary); font-weight: 600; }
+
+    .nav-right { display: flex; align-items: center; gap: 0.75rem; }
+    .nav-badge {
+      font-family: var(--font-mono); font-size: 0.65rem; color: var(--accent);
+      background: var(--accent-faint); border: 1px solid var(--accent-glow);
+      padding: 3px 10px; border-radius: 100px; letter-spacing: 0.06em;
+    }
+
+    .btn-logout {
+      background: transparent; border: 1px solid var(--border);
+      color: var(--text-muted); border-radius: var(--radius-sm);
+      padding: 0.4rem 0.9rem; font-size: 0.78rem; cursor: pointer;
+      font-family: var(--font-body); transition: all 0.2s;
+    }
+    .btn-logout:hover { border-color: var(--danger); color: var(--danger); }
+
+    /* ── MAIN ── */
+    main {
+      position: relative; z-index: 1;
+      max-width: 1280px; margin: 0 auto;
+      padding: clamp(2rem, 4vw, 3rem) clamp(1.5rem, 4vw, 2.5rem);
+    }
+
+    /* ── PAGE HEADER ── */
+    .page-header {
+      display: flex; align-items: flex-start; justify-content: space-between;
+      flex-wrap: wrap; gap: 1rem; margin-bottom: 2.5rem;
+      animation: fade-up 0.5s ease both;
+    }
+
+    .page-title {
+      font-family: var(--font-display); font-size: clamp(1.5rem, 3vw, 2rem);
+      font-weight: 800; letter-spacing: -0.03em; line-height: 1.1;
+    }
+
+    .page-subtitle { color: var(--text-secondary); font-size: 0.9rem; margin-top: 0.3rem; }
+
+    .last-update {
+      font-family: var(--font-mono); font-size: 0.65rem; color: var(--text-muted);
+      display: flex; align-items: center; gap: 6px; margin-top: 0.5rem;
+    }
+
+    .live-dot {
+      width: 6px; height: 6px; background: var(--accent);
+      border-radius: 50%; box-shadow: 0 0 6px var(--accent);
+      animation: blink 1.5s ease-in-out infinite;
+    }
+
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
+    @keyframes fade-up { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:none} }
+
+    /* ── KPI CARDS ── */
+    .kpi-grid {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1rem; margin-bottom: 2rem;
+      animation: fade-up 0.5s 0.05s ease both;
+    }
+
+    .kpi-card {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: var(--radius-lg); padding: 1.5rem;
+      position: relative; overflow: hidden; transition: all 0.25s;
+    }
+
+    .kpi-card:hover { background: var(--bg-card-hover); border-color: #2a3040; transform: translateY(-2px); }
+
+    .kpi-card::before {
+      content: ''; position: absolute; top: 0; left: 0; right: 0;
+      height: 2px; border-radius: 2px 2px 0 0;
+    }
+
+    .kpi-card.green::before  { background: var(--accent); }
+    .kpi-card.red::before    { background: var(--danger); }
+    .kpi-card.yellow::before { background: var(--warning); }
+    .kpi-card.blue::before   { background: #4d9fff; }
+
+    .kpi-icon {
+      width: 38px; height: 38px; border-radius: var(--radius-sm);
+      display: grid; place-items: center; margin-bottom: 1rem;
+    }
+
+    .kpi-icon svg { width: 18px; height: 18px; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    .kpi-card.green  .kpi-icon { background: var(--accent-faint); border: 1px solid var(--accent-glow); }
+    .kpi-card.green  .kpi-icon svg { stroke: var(--accent); }
+    .kpi-card.red    .kpi-icon { background: rgba(255,77,106,0.1); border: 1px solid rgba(255,77,106,0.25); }
+    .kpi-card.red    .kpi-icon svg { stroke: var(--danger); }
+    .kpi-card.yellow .kpi-icon { background: rgba(255,179,71,0.1); border: 1px solid rgba(255,179,71,0.25); }
+    .kpi-card.yellow .kpi-icon svg { stroke: var(--warning); }
+    .kpi-card.blue   .kpi-icon { background: rgba(77,159,255,0.1); border: 1px solid rgba(77,159,255,0.25); }
+    .kpi-card.blue   .kpi-icon svg { stroke: #4d9fff; }
+
+    .kpi-value { font-family: var(--font-display); font-size: 2rem; font-weight: 800; line-height: 1; margin-bottom: 4px; }
+    .kpi-label { font-size: 0.8rem; color: var(--text-secondary); }
+    .kpi-sub   { font-size: 0.72rem; color: var(--text-muted); margin-top: 2px; }
+
+    /* ── CHARTS ROW ── */
+    .charts-row {
+      display: grid; grid-template-columns: 1fr 2fr;
+      gap: 1rem; margin-bottom: 2rem;
+      animation: fade-up 0.5s 0.1s ease both;
+    }
+
+    .chart-card {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: var(--radius-lg); padding: 1.5rem;
+    }
+
+    .chart-title {
+      font-family: var(--font-display); font-size: 0.9rem;
+      font-weight: 700; margin-bottom: 0.3rem;
+    }
+
+    .chart-subtitle { font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 1.25rem; }
+
+    .chart-wrap { position: relative; }
+    .donut-wrap { height: 200px; display: flex; align-items: center; justify-content: center; }
+    .bar-wrap    { height: 200px; }
+
+    /* Leyenda del donut */
+    .donut-legend {
+      display: flex; flex-direction: column; gap: 0.5rem; margin-top: 1.25rem;
+    }
+
+    .legend-item { display: flex; align-items: center; gap: 0.6rem; font-size: 0.78rem; color: var(--text-secondary); }
+    .legend-dot  { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+    /* Nivel de riesgo global */
+    .risk-banner {
+      display: flex; align-items: center; gap: 1rem;
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: var(--radius-lg); padding: 1.25rem 1.5rem;
+      margin-bottom: 2rem;
+      animation: fade-up 0.5s 0.15s ease both;
+    }
+
+    .risk-indicator {
+      width: 52px; height: 52px; border-radius: 50%;
+      display: grid; place-items: center; flex-shrink: 0;
+      font-family: var(--font-display); font-size: 1.1rem; font-weight: 800;
+    }
+
+    .risk-info h3 {
+      font-family: var(--font-display); font-size: 1rem; font-weight: 700; margin-bottom: 3px;
+    }
+
+    .risk-info p { font-size: 0.8rem; color: var(--text-secondary); }
+
+    .risk-bars { flex: 1; display: flex; flex-direction: column; gap: 0.5rem; }
+
+    .risk-bar-row { display: flex; align-items: center; gap: 0.75rem; }
+    .risk-bar-lbl { font-size: 0.72rem; color: var(--text-secondary); width: 60px; flex-shrink: 0; }
+    .risk-bar-track { flex: 1; height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
+    .risk-bar-fill  { height: 100%; border-radius: 3px; transition: width 1s ease; }
+    .risk-bar-pct   { font-family: var(--font-mono); font-size: 0.65rem; color: var(--text-muted); width: 32px; text-align: right; flex-shrink: 0; }
+
+    /* ── TABLA ── */
+    .table-section {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: var(--radius-lg); overflow: hidden;
+      animation: fade-up 0.5s 0.2s ease both;
+    }
+
+    .table-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 1.25rem 1.5rem; border-bottom: 1px solid var(--border);
+      flex-wrap: wrap; gap: 0.75rem;
+    }
+
+    .table-header h2 { font-family: var(--font-display); font-size: 0.95rem; font-weight: 700; }
+    .table-count { font-family: var(--font-mono); font-size: 0.7rem; color: var(--text-muted); }
+
+    /* Filtros */
+    .table-filters { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+
+    .filter-btn {
+      background: var(--bg-surface); border: 1px solid var(--border);
+      border-radius: 100px; padding: 0.3rem 0.85rem;
+      font-size: 0.75rem; color: var(--text-secondary);
+      cursor: pointer; font-family: var(--font-body); transition: all 0.2s;
+    }
+
+    .filter-btn.active, .filter-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-faint); }
+
+    /* Tabla */
+    .table-scroll { overflow-x: auto; }
+
+    table { width: 100%; border-collapse: collapse; }
+
+    thead th {
+      padding: 0.75rem 1.5rem; text-align: left;
+      font-family: var(--font-mono); font-size: 0.65rem;
+      color: var(--text-muted); letter-spacing: 0.1em; text-transform: uppercase;
+      border-bottom: 1px solid var(--border); white-space: nowrap;
+      background: var(--bg-surface);
+    }
+
+    tbody tr { border-bottom: 1px solid var(--border); transition: background 0.15s; }
+    tbody tr:last-child { border-bottom: none; }
+    tbody tr:hover { background: rgba(255,255,255,0.02); }
+
+    tbody td { padding: 0.9rem 1.5rem; font-size: 0.85rem; vertical-align: middle; }
+
+    .td-nombre strong { display: block; font-weight: 600; color: var(--text-primary); }
+    .td-nombre span   { font-size: 0.75rem; color: var(--text-muted); }
+
+    .badge-riesgo {
+      display: inline-flex; align-items: center; gap: 5px;
+      font-family: var(--font-mono); font-size: 0.65rem;
+      letter-spacing: 0.05em; text-transform: uppercase;
+      padding: 3px 9px; border-radius: 100px;
+    }
+
+    .badge-riesgo::before { content: ''; width: 5px; height: 5px; border-radius: 50%; }
+    .badge-critico { background: rgba(255,77,106,0.12); color: var(--danger);  border: 1px solid rgba(255,77,106,0.25); }
+    .badge-critico::before { background: var(--danger); box-shadow: 0 0 4px var(--danger); }
+    .badge-alto    { background: rgba(255,77,106,0.08); color: #ff8099; border: 1px solid rgba(255,77,106,0.2); }
+    .badge-alto::before { background: #ff8099; }
+    .badge-medio   { background: rgba(255,179,71,0.1);  color: var(--warning); border: 1px solid rgba(255,179,71,0.25); }
+    .badge-medio::before { background: var(--warning); box-shadow: 0 0 4px var(--warning); }
+    .badge-bajo    { background: var(--accent-faint);   color: var(--accent);  border: 1px solid var(--accent-glow); }
+    .badge-bajo::before { background: var(--accent); box-shadow: 0 0 4px var(--accent); }
+    .badge-pendiente { background: rgba(255,255,255,0.05); color: var(--text-muted); border: 1px solid var(--border); }
+    .badge-pendiente::before { background: var(--text-muted); }
+
+    .puntaje-cell { font-family: var(--font-mono); font-size: 0.82rem; }
+    .puntaje-na   { color: var(--text-muted); }
+
+    .fecha-cell { font-size: 0.78rem; color: var(--text-secondary); }
+
+    /* Empty state */
+    .empty-state {
+      text-align: center; padding: 3rem 1.5rem;
+      color: var(--text-muted); font-size: 0.875rem;
+    }
+
+    .empty-state .empty-icon { font-size: 2.5rem; margin-bottom: 0.75rem; }
+    .empty-state p { color: var(--text-secondary); }
+
+    /* ── SUGERENCIAS ── */
+    .sugerencias-section {
+      margin-bottom: 2rem;
+      animation: fade-up 0.5s 0.18s ease both;
+    }
+
+    .sugerencias-header {
+      display: flex; align-items: center; gap: 1rem;
+      margin-bottom: 1.25rem; flex-wrap: wrap;
+    }
+
+    .sugerencias-header h2 {
+      font-family: var(--font-display); font-size: 1rem; font-weight: 700;
+    }
+
+    .sugerencias-header p {
+      font-size: 0.8rem; color: var(--text-secondary);
+    }
+
+    .nivel-tag {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-family: var(--font-mono); font-size: 0.65rem;
+      letter-spacing: 0.06em; text-transform: uppercase;
+      padding: 4px 10px; border-radius: 100px; margin-left: auto;
+    }
+
+    .sugerencias-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 1rem;
+    }
+
+    .sug-card {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: var(--radius-md); padding: 1.25rem;
+      display: flex; gap: 0.85rem; align-items: flex-start;
+      transition: all 0.25s; position: relative; overflow: hidden;
+    }
+
+    .sug-card:hover {
+      background: var(--bg-card-hover);
+      transform: translateY(-2px);
+      box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+    }
+
+    .sug-card::before {
+      content: ''; position: absolute;
+      left: 0; top: 0; bottom: 0; width: 3px;
+      border-radius: 3px 0 0 3px;
+    }
+
+    .sug-card.critico::before { background: var(--danger); }
+    .sug-card.alto::before    { background: #ff8099; }
+    .sug-card.medio::before   { background: var(--warning); }
+    .sug-card.bajo::before    { background: var(--accent); }
+
+    .sug-num {
+      font-family: var(--font-mono); font-size: 0.65rem;
+      color: var(--text-muted); flex-shrink: 0; padding-top: 2px;
+      letter-spacing: 0.05em;
+    }
+
+    .sug-text {
+      font-size: 0.85rem; color: var(--text-secondary);
+      line-height: 1.65;
+    }
+
+    .sug-empty {
+      text-align: center; padding: 2rem;
+      color: var(--text-muted); font-size: 0.875rem;
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+    }
+
+    /* ── RESPONSIVE ── */
+    @media (max-width: 900px) {
+      .charts-row { grid-template-columns: 1fr; }
+    }
+
+    @media (max-width: 600px) {
+      .risk-banner { flex-direction: column; align-items: flex-start; }
+      .kpi-grid { grid-template-columns: 1fr 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <!-- NAV -->
+  <nav>
+    <div class="nav-left">
+      <a href="/" class="nav-logo">
+        <div class="logo-icon">
+          <svg viewBox="0 0 24 24"><path d="M12 2L3 7v5c0 5.25 3.75 10.15 9 11.25C17.25 22.15 21 17.25 21 12V7L12 2z"/></svg>
+        </div>
+        <span class="logo-text">Threat<span>Zero</span></span>
+      </a>
+      <div class="nav-divider"></div>
+      <span class="nav-empresa">Panel de <strong>{empresa.nombre}</strong></span>
+    </div>
+    <div class="nav-right">
+      <span class="nav-badge">EMPRESA</span>
+      <button class="btn-logout" id="btn-logout">Cerrar sesión</button>
+    </div>
+  </nav>
+
+  <main>
+    <!-- HEADER -->
+    <div class="page-header">
+      <div>
+        <h1 class="page-title">Dashboard de Seguridad</h1>
+        <p class="page-subtitle">Resumen del estado de ciberseguridad de {empresa.nombre}</p>
+        <div class="last-update">
+          <div class="live-dot"></div>
+          Datos en tiempo real · Código: {empresa.codigo}
+        </div>
+      </div>
+    </div>
+
+    <!-- KPI CARDS -->
+    <div class="kpi-grid">
+      <div class="kpi-card green">
+        <div class="kpi-icon">
+          <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        </div>
+        <div class="kpi-value">{stats.registrados}<span style="font-size:1rem;color:var(--text-muted)">/{stats.total_empleados}</span></div>
+        <div class="kpi-label">Empleados registrados</div>
+        <div class="kpi-sub">{stats.total_empleados - stats.registrados} cupo(s) disponible(s)</div>
+      </div>
+
+      <div class="kpi-card blue">
+        <div class="kpi-icon">
+          <svg viewBox="0 0 24 24"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+        </div>
+        <div class="kpi-value">{stats.completaron_test}</div>
+        <div class="kpi-label">Completaron el test</div>
+        <div class="kpi-sub">{stats.registrados - stats.completaron_test} pendiente(s)</div>
+      </div>
+
+      <div class="kpi-card" style={`border-top-color: ${colorNivel}`}>
+        <div class="kpi-icon" style={`background: ${colorNivel}15; border-color: ${colorNivel}40`}>
+          <svg viewBox="0 0 24 24" style={`stroke: ${colorNivel}`}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        </div>
+        <div class="kpi-value" style={`color: ${colorNivel}`}>{nivelGeneral}</div>
+        <div class="kpi-label">Nivel de riesgo general</div>
+        <div class="kpi-sub">Puntaje promedio: {stats.promedio_puntaje}/100</div>
+      </div>
+
+      <div class="kpi-card red">
+        <div class="kpi-icon">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        </div>
+        <div class="kpi-value" style="color:var(--danger)">{stats.riesgo_critico + stats.riesgo_alto}</div>
+        <div class="kpi-label">En riesgo alto/crítico</div>
+        <div class="kpi-sub">Requieren atención inmediata</div>
+      </div>
+    </div>
+
+    <!-- RIESGO BANNER -->
+    <div class="risk-banner">
+      <div class="risk-indicator" style={`background: ${colorNivel}20; border: 2px solid ${colorNivel}; color: ${colorNivel}`}>
+        {stats.promedio_puntaje}
+      </div>
+      <div class="risk-info">
+        <h3>Riesgo {nivelGeneral}</h3>
+        <p>Basado en {stats.completaron_test} diagnóstico(s) completado(s)</p>
+      </div>
+      <div class="risk-bars">
+        <div class="risk-bar-row">
+          <span class="risk-bar-lbl">Crítico</span>
+          <div class="risk-bar-track"><div class="risk-bar-fill" style={`width:${pct(stats.riesgo_critico)}%; background: var(--danger)`}></div></div>
+          <span class="risk-bar-pct">{pct(stats.riesgo_critico)}%</span>
+        </div>
+        <div class="risk-bar-row">
+          <span class="risk-bar-lbl">Alto</span>
+          <div class="risk-bar-track"><div class="risk-bar-fill" style={`width:${pct(stats.riesgo_alto)}%; background: #ff8099`}></div></div>
+          <span class="risk-bar-pct">{pct(stats.riesgo_alto)}%</span>
+        </div>
+        <div class="risk-bar-row">
+          <span class="risk-bar-lbl">Medio</span>
+          <div class="risk-bar-track"><div class="risk-bar-fill" style={`width:${pct(stats.riesgo_medio)}%; background: var(--warning)`}></div></div>
+          <span class="risk-bar-pct">{pct(stats.riesgo_medio)}%</span>
+        </div>
+        <div class="risk-bar-row">
+          <span class="risk-bar-lbl">Bajo</span>
+          <div class="risk-bar-track"><div class="risk-bar-fill" style={`width:${pct(stats.riesgo_bajo)}%; background: var(--accent)`}></div></div>
+          <span class="risk-bar-pct">{pct(stats.riesgo_bajo)}%</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- CHARTS -->
+    <div class="charts-row">
+      <!-- Donut distribución -->
+      <div class="chart-card">
+        <div class="chart-title">Distribución de riesgo</div>
+        <div class="chart-subtitle">Por nivel de vulnerabilidad</div>
+        <div class="donut-wrap">
+          <canvas id="donutChart"></canvas>
+        </div>
+        <div class="donut-legend">
+          <div class="legend-item"><div class="legend-dot" style="background:#ff4d6a"></div> Crítico — {stats.riesgo_critico}</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#ff8099"></div> Alto — {stats.riesgo_alto}</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#ffb347"></div> Medio — {stats.riesgo_medio}</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#00e5a0"></div> Bajo — {stats.riesgo_bajo}</div>
+        </div>
+      </div>
+
+      <!-- Barras puntajes -->
+      <div class="chart-card">
+        <div class="chart-title">Puntaje por empleado</div>
+        <div class="chart-subtitle">Mayor puntaje = mayor vulnerabilidad</div>
+        <div class="bar-wrap">
+          <canvas id="barChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- SUGERENCIAS -->
+    <div class="sugerencias-section">
+      <div class="sugerencias-header">
+        <div>
+          <h2>Recomendaciones de seguridad</h2>
+          <p>Basadas en el nivel de riesgo predominante de tu organización</p>
+        </div>
+        <span class="nivel-tag" style={`
+          background: ${colorNivel}15;
+          color: ${colorNivel};
+          border: 1px solid ${colorNivel}40;
+        `}>
+          Nivel {nivelGeneral}
+        </span>
+      </div>
+
+      {sugerencias.length === 0 ? (
+        <div class="sug-empty">
+          Completa el test con al menos un empleado para ver recomendaciones personalizadas.
+        </div>
+      ) : (
+        <div class="sugerencias-grid">
+          {sugerencias.map((sug, i) => (
+            <div class={`sug-card ${sug.nivel_riesgo}`}>
+              <span class="sug-num">0{i + 1}</span>
+              <p class="sug-text">{sug.sugerencia}</p>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+
+    <!-- TABLA EMPLEADOS -->
+    <div class="table-section">
+      <div class="table-header">
+        <div>
+          <h2>Empleados</h2>
+          <span class="table-count">{empleados.length} registro(s)</span>
+        </div>
+        <div class="table-filters">
+          <button class="filter-btn active" data-filter="todos">Todos</button>
+          <button class="filter-btn" data-filter="critico">Crítico</button>
+          <button class="filter-btn" data-filter="alto">Alto</button>
+          <button class="filter-btn" data-filter="medio">Medio</button>
+          <button class="filter-btn" data-filter="bajo">Bajo</button>
+          <button class="filter-btn" data-filter="pendiente">Pendiente</button>
+        </div>
+      </div>
+
+      <div class="table-scroll">
+        {empleados.length === 0 ? (
+          <div class="empty-state">
+            <div class="empty-icon">👥</div>
+            <p>No hay empleados registrados aún.</p>
+          </div>
+        ) : (
+          <table id="tabla-empleados">
+            <thead>
+              <tr>
+                <th>Empleado</th>
+                <th>Correo</th>
+                <th>Nivel de riesgo</th>
+                <th>Puntaje</th>
+                <th>Tests completados</th>
+                <th>Último test</th>
+              </tr>
+            </thead>
+            <tbody>
+              {empleados.map((emp) => (
+                <tr data-nivel={emp.nivel_riesgo ?? 'pendiente'}>
+                  <td class="td-nombre">
+                    <strong>{emp.nombre}</strong>
+                  </td>
+                  <td style="color:var(--text-secondary); font-size:0.8rem">{emp.mail_corporativo}</td>
+                  <td>
+                    {emp.nivel_riesgo === 'critico' && <span class="badge-riesgo badge-critico">Crítico</span>}
+                    {emp.nivel_riesgo === 'alto'    && <span class="badge-riesgo badge-alto">Alto</span>}
+                    {emp.nivel_riesgo === 'medio'   && <span class="badge-riesgo badge-medio">Medio</span>}
+                    {emp.nivel_riesgo === 'bajo'    && <span class="badge-riesgo badge-bajo">Bajo</span>}
+                    {!emp.nivel_riesgo              && <span class="badge-riesgo badge-pendiente">Pendiente</span>}
+                  </td>
+                  <td class="puntaje-cell">
+                    {emp.ultimo_puntaje !== null
+                      ? <span style={`color:${emp.ultimo_puntaje >= 50 ? 'var(--danger)' : 'var(--accent)'}`}>{emp.ultimo_puntaje}</span>
+                      : <span class="puntaje-na">—</span>
+                    }
+                  </td>
+                  <td style="color:var(--text-secondary); font-size:0.82rem">{emp.total_diagnosticos}</td>
+                  <td class="fecha-cell">
+                    {emp.fecha ? new Date(emp.fecha).toLocaleDateString('es-MX', { day:'2-digit', month:'short', year:'numeric' }) : '—'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  </main>
+
+  <script define:vars={{ chartData }}>
+    // @ts-nocheck
+
+    // ── LOGOUT ──
+    document.getElementById('btn-logout').addEventListener('click', async () => {
+      await fetch('/api/empresa/logout', { method: 'POST' });
+      window.location.href = '/empresa/auth';
+    });
+
+    // ── FILTROS DE TABLA ──
+    document.querySelectorAll('.filter-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        const filter = btn.getAttribute('data-filter');
+        document.querySelectorAll('#tabla-empleados tbody tr').forEach(row => {
+          const nivel = row.getAttribute('data-nivel');
+          row.style.display = (filter === 'todos' || nivel === filter) ? '' : 'none';
+        });
+      });
+    });
+
+    // ── CHARTS ──
+    const data = JSON.parse(chartData);
+
+    const chartDefaults = {
+      plugins: { legend: { display: false }, tooltip: {
+        backgroundColor: '#13161a', borderColor: '#1e2329', borderWidth: 1,
+        titleColor: '#eef0f3', bodyColor: '#8a9099',
+        padding: 10, cornerRadius: 8,
+      }},
+    };
+
+    // Donut
+    const donutCtx = document.getElementById('donutChart').getContext('2d');
+    new Chart(donutCtx, {
+      type: 'doughnut',
+      data: {
+        labels: ['Crítico', 'Alto', 'Medio', 'Bajo'],
+        datasets: [{
+          data: data.riesgo,
+          backgroundColor: ['#ff4d6a', '#ff8099', '#ffb347', '#00e5a0'],
+          borderColor: '#13161a',
+          borderWidth: 3,
+          hoverOffset: 6,
+        }]
+      },
+      options: {
+        ...chartDefaults,
+        cutout: '68%',
+        responsive: true,
+        maintainAspectRatio: false,
+      }
+    });
+
+    // Barras
+    const barCtx = document.getElementById('barChart').getContext('2d');
+    new Chart(barCtx, {
+      type: 'bar',
+      data: {
+        labels: data.puntajes.map(p => p.nombre),
+        datasets: [{
+          label: 'Puntaje',
+          data: data.puntajes.map(p => p.puntaje),
+          backgroundColor: data.puntajes.map(p =>
+            p.puntaje >= 75 ? '#ff4d6a44' :
+            p.puntaje >= 50 ? '#ff809944' :
+            p.puntaje >= 25 ? '#ffb34744' : '#00e5a044'
+          ),
+          borderColor: data.puntajes.map(p =>
+            p.puntaje >= 75 ? '#ff4d6a' :
+            p.puntaje >= 50 ? '#ff8099' :
+            p.puntaje >= 25 ? '#ffb347' : '#00e5a0'
+          ),
+          borderWidth: 1,
+          borderRadius: 6,
+        }]
+      },
+      options: {
+        ...chartDefaults,
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          x: { grid: { color: '#1e2329' }, ticks: { color: '#8a9099', font: { size: 11 } } },
+          y: {
+            grid: { color: '#1e2329' }, ticks: { color: '#8a9099', font: { size: 11 } },
+            min: 0, max: 100,
+          }
+        }
+      }
+    });
+  </script>
+</body>
+</html>

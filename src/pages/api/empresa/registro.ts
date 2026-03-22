@@ -2,6 +2,8 @@
 // Endpoint POST — Registro de nueva empresa
 // Inserta en la tabla `empresas` con contraseña hasheada en bcrypt
 
+export const prerender = false;
+
 import type { APIRoute } from 'astro';
 import mysql from 'mysql2/promise';
 import bcrypt from 'bcrypt';

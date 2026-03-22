@@ -1,0 +1,703 @@
+---
+// src/pages/empleado/auth.astro
+// Login y Registro de empleados — Threat Zero
+export const prerender = false;
+
+// Redirigir si ya hay sesión de empleado
+const session = Astro.cookies.get('empleado_session');
+if (session?.value) {
+  return Astro.redirect('/empleado/bienvenida');
+}
+---
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Threat Zero — Acceso Empleados</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800&family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg-base:      #0a0b0d;
+      --bg-surface:   #0f1114;
+      --bg-card:      #13161a;
+      --bg-input:     #0f1114;
+      --border:       #1e2329;
+      --accent:       #00e5a0;
+      --accent-dim:   #00c98a;
+      --accent-faint: #00e5a010;
+      --accent-glow:  #00e5a035;
+      --danger:       #ff4d6a;
+      --danger-faint: #ff4d6a15;
+      --text-primary: #eef0f3;
+      --text-secondary:#8a9099;
+      --text-muted:   #4a5260;
+      --font-display: 'Outfit', sans-serif;
+      --font-mono:    'Space Mono', monospace;
+      --font-body:    'DM Sans', sans-serif;
+      --radius-sm: 6px; --radius-md: 12px; --radius-lg: 20px;
+    }
+
+    html, body { height: 100%; background: var(--bg-base); color: var(--text-primary); font-family: var(--font-body); }
+
+    /* ── LAYOUT SPLIT ── */
+    .auth-wrapper {
+      min-height: 100vh;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+    }
+
+    /* ── PANEL IZQUIERDO ── */
+    .panel-left {
+      position: relative;
+      background: var(--bg-surface);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 2.5rem;
+      overflow: hidden;
+    }
+
+    .panel-left::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(var(--border) 1px, transparent 1px),
+        linear-gradient(90deg, var(--border) 1px, transparent 1px);
+      background-size: 40px 40px;
+      mask-image: radial-gradient(ellipse 70% 70% at 40% 50%, black, transparent);
+      opacity: 0.5;
+      pointer-events: none;
+    }
+
+    .panel-left::after {
+      content: '';
+      position: absolute;
+      top: 20%; left: 30%;
+      width: 500px; height: 500px;
+      background: radial-gradient(circle, #00e5a015 0%, transparent 65%);
+      pointer-events: none;
+      animation: pulse 7s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%,100% { transform: scale(1); opacity: 0.7; }
+      50%      { transform: scale(1.1); opacity: 1; }
+    }
+
+    .panel-logo {
+      display: flex; align-items: center; gap: 10px;
+      position: relative; z-index: 1; text-decoration: none;
+    }
+
+    .logo-icon {
+      width: 36px; height: 36px; background: var(--accent);
+      border-radius: 8px; display: grid; place-items: center;
+    }
+
+    .logo-icon svg { width: 20px; height: 20px; fill: var(--bg-base); }
+
+    .logo-text { font-family: var(--font-display); font-weight: 800; font-size: 1.2rem; color: var(--text-primary); }
+    .logo-text span { color: var(--accent); }
+
+    .panel-center {
+      position: relative; z-index: 1;
+      flex: 1; display: flex; flex-direction: column;
+      justify-content: center; gap: 2rem;
+    }
+
+    .panel-headline {
+      font-family: var(--font-display);
+      font-size: clamp(1.8rem, 2.5vw, 2.5rem);
+      font-weight: 800; line-height: 1.15; letter-spacing: -0.03em;
+    }
+
+    .panel-headline .hl { color: var(--accent); }
+
+    .panel-sub {
+      color: var(--text-secondary); font-size: 0.95rem;
+      line-height: 1.7; max-width: 380px;
+    }
+
+    /* Steps de instrucción */
+    .steps { display: flex; flex-direction: column; gap: 1rem; }
+
+    .step {
+      display: flex; align-items: flex-start; gap: 1rem;
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: var(--radius-md); padding: 1rem 1.1rem;
+    }
+
+    .step-num {
+      width: 28px; height: 28px; border-radius: 50%;
+      background: var(--accent-faint); border: 1px solid var(--accent-glow);
+      display: grid; place-items: center; flex-shrink: 0;
+      font-family: var(--font-mono); font-size: 0.7rem; color: var(--accent);
+    }
+
+    .step-info strong {
+      font-family: var(--font-display); font-size: 0.875rem;
+      font-weight: 700; display: block; margin-bottom: 2px;
+    }
+
+    .step-info span { font-size: 0.78rem; color: var(--text-secondary); }
+
+    .panel-footer {
+      position: relative; z-index: 1;
+      font-family: var(--font-mono); font-size: 0.65rem; color: var(--text-muted);
+    }
+
+    /* ── PANEL DERECHO ── */
+    .panel-right {
+      display: flex; align-items: center;
+      justify-content: center; padding: 2.5rem;
+    }
+
+    .auth-box { width: 100%; max-width: 420px; animation: fade-up 0.5s ease both; }
+
+    @keyframes fade-up {
+      from { opacity: 0; transform: translateY(16px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ── TABS ── */
+    .tabs {
+      display: grid; grid-template-columns: 1fr 1fr;
+      background: var(--bg-surface); border: 1px solid var(--border);
+      border-radius: var(--radius-md); padding: 4px; margin-bottom: 2rem;
+    }
+
+    .tab-btn {
+      padding: 0.65rem; border: none;
+      border-radius: calc(var(--radius-md) - 4px);
+      background: transparent; color: var(--text-secondary);
+      font-family: var(--font-body); font-size: 0.875rem;
+      font-weight: 500; cursor: pointer; transition: all 0.2s;
+    }
+
+    .tab-btn.active {
+      background: var(--bg-card); color: var(--text-primary);
+      box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+    }
+
+    /* ── FORMS ── */
+    .form-panel { display: none; }
+    .form-panel.active { display: block; }
+
+    .form-title {
+      font-family: var(--font-display); font-size: 1.5rem;
+      font-weight: 800; letter-spacing: -0.02em; margin-bottom: 0.35rem;
+    }
+
+    .form-subtitle {
+      font-size: 0.85rem; color: var(--text-secondary);
+      margin-bottom: 1.75rem; line-height: 1.5;
+    }
+
+    .form-group { margin-bottom: 1rem; }
+
+    label {
+      display: block; font-size: 0.8rem; font-weight: 500;
+      color: var(--text-secondary); margin-bottom: 0.4rem;
+    }
+
+    .input-wrap { position: relative; }
+
+    .input-icon {
+      position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
+      width: 16px; height: 16px; stroke: var(--text-muted); fill: none;
+      stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;
+      pointer-events: none; transition: stroke 0.2s;
+    }
+
+    input {
+      width: 100%; background: var(--bg-input); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); padding: 0.65rem 0.85rem 0.65rem 2.4rem;
+      color: var(--text-primary); font-family: var(--font-body); font-size: 0.9rem;
+      transition: border-color 0.2s, box-shadow 0.2s; outline: none;
+    }
+
+    input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-faint);
+    }
+
+    .input-wrap:focus-within .input-icon { stroke: var(--accent); }
+    input::placeholder { color: var(--text-muted); }
+    .input-with-toggle input { padding-right: 2.8rem; }
+
+    .toggle-pass {
+      position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+      background: none; border: none; cursor: pointer; padding: 4px;
+      color: var(--text-muted); transition: color 0.2s; display: flex; align-items: center;
+    }
+
+    .toggle-pass:hover { color: var(--accent); }
+    .toggle-pass svg {
+      width: 16px; height: 16px; stroke: currentColor; fill: none;
+      stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;
+    }
+
+    /* Badge de empresa verificada */
+    .empresa-verified {
+      display: none;
+      align-items: center; gap: 8px;
+      background: var(--accent-faint); border: 1px solid var(--accent-glow);
+      border-radius: var(--radius-sm); padding: 0.6rem 0.85rem;
+      margin-top: 0.5rem; font-size: 0.8rem; color: var(--accent);
+    }
+
+    .empresa-verified.show { display: flex; }
+    .empresa-verified svg {
+      width: 14px; height: 14px; stroke: var(--accent);
+      fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
+      flex-shrink: 0;
+    }
+
+    .field-error {
+      font-size: 0.75rem; color: var(--danger);
+      margin-top: 0.3rem; display: none;
+    }
+    .field-error.show { display: block; }
+
+    .alert {
+      display: none; align-items: center; gap: 0.65rem;
+      background: var(--danger-faint); border: 1px solid rgba(255,77,106,0.3);
+      border-radius: var(--radius-sm); padding: 0.75rem 1rem;
+      margin-bottom: 1.25rem; font-size: 0.82rem; color: var(--danger);
+    }
+    .alert.show { display: flex; }
+    .alert svg {
+      width: 15px; height: 15px; stroke: currentColor; fill: none;
+      stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0;
+    }
+
+    .btn-submit {
+      width: 100%; padding: 0.8rem;
+      background: var(--accent); color: var(--bg-base); border: none;
+      border-radius: var(--radius-sm); font-family: var(--font-display);
+      font-size: 0.95rem; font-weight: 700; cursor: pointer;
+      transition: background 0.2s, box-shadow 0.2s, opacity 0.2s;
+      margin-top: 0.5rem; display: flex; align-items: center;
+      justify-content: center; gap: 8px;
+    }
+
+    .btn-submit:hover:not(:disabled) {
+      background: var(--accent-dim);
+      box-shadow: 0 0 24px var(--accent-glow);
+    }
+
+    .btn-submit:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .spinner {
+      width: 16px; height: 16px;
+      border: 2px solid rgba(0,0,0,0.2); border-top-color: var(--bg-base);
+      border-radius: 50%; animation: spin 0.7s linear infinite; display: none;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .btn-submit.loading .spinner { display: block; }
+    .btn-submit.loading .btn-label { display: none; }
+
+    .switch-mode {
+      text-align: center; font-size: 0.82rem;
+      color: var(--text-secondary); margin-top: 1.25rem;
+    }
+
+    .switch-mode a { color: var(--accent); text-decoration: none; font-weight: 500; }
+    .switch-mode a:hover { text-decoration: underline; }
+
+    /* Cupos restantes */
+    .cupos-badge {
+      display: none;
+      font-family: var(--font-mono); font-size: 0.7rem;
+      color: var(--text-muted); margin-top: 0.35rem;
+    }
+    .cupos-badge.show { display: block; }
+    .cupos-badge.warning { color: var(--danger); }
+
+    @media (max-width: 768px) {
+      .auth-wrapper { grid-template-columns: 1fr; }
+      .panel-left { display: none; }
+      .panel-right { padding: 1.5rem; align-items: flex-start; padding-top: 3rem; }
+    }
+  </style>
+</head>
+<body>
+  <div class="auth-wrapper">
+
+    <!-- PANEL IZQUIERDO -->
+    <aside class="panel-left">
+      <a href="/" class="panel-logo">
+        <div class="logo-icon">
+          <svg viewBox="0 0 24 24"><path d="M12 2L3 7v5c0 5.25 3.75 10.15 9 11.25C17.25 22.15 21 17.25 21 12V7L12 2z"/></svg>
+        </div>
+        <span class="logo-text">Threat<span>Zero</span></span>
+      </a>
+
+      <div class="panel-center">
+        <div>
+          <h2 class="panel-headline">Acceso para<br/><span class="hl">empleados</span></h2>
+          <p class="panel-sub">Realiza el test de ciberseguridad asignado por tu empresa y descubre qué tan protegido estás ante amenazas digitales.</p>
+        </div>
+
+        <div class="steps">
+          <div class="step">
+            <div class="step-num">01</div>
+            <div class="step-info">
+              <strong>Ingresa el código de tu empresa</strong>
+              <span>Tu empleador te lo proporcionó al invitarte.</span>
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-num">02</div>
+            <div class="step-info">
+              <strong>Registra tu correo corporativo</strong>
+              <span>Usa el correo que tienes asignado en la empresa.</span>
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-num">03</div>
+            <div class="step-info">
+              <strong>Completa el test en 5 minutos</strong>
+              <span>Responde con honestidad para obtener un diagnóstico real.</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <p class="panel-footer">© 2026 Threat Zero — Portal de empleados</p>
+    </aside>
+
+    <!-- PANEL DERECHO -->
+    <main class="panel-right">
+      <div class="auth-box">
+
+        <div class="tabs" role="tablist">
+          <button class="tab-btn active" id="tab-login">Iniciar sesión</button>
+          <button class="tab-btn"        id="tab-registro">Registrarse</button>
+        </div>
+
+        <!-- LOGIN EMPLEADO -->
+        <div class="form-panel active" id="panel-login">
+          <h1 class="form-title">Hola de nuevo</h1>
+          <p class="form-subtitle">Ingresa con tu correo corporativo y contraseña.</p>
+
+          <div class="alert" id="alert-login">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            <span id="alert-login-msg">Correo o contraseña incorrectos.</span>
+          </div>
+
+          <form id="form-login" novalidate>
+            <div class="form-group">
+              <label for="login-mail">Correo corporativo</label>
+              <div class="input-wrap">
+                <input type="email" id="login-mail" name="mail" placeholder="tu@empresa.com" required />
+                <svg class="input-icon" viewBox="0 0 24 24">
+                  <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+                  <polyline points="22,6 12,13 2,6"/>
+                </svg>
+              </div>
+              <div class="field-error" id="err-login-mail">Ingresa un correo válido.</div>
+            </div>
+
+            <div class="form-group">
+              <label for="login-pass">Contraseña</label>
+              <div class="input-wrap input-with-toggle">
+                <input type="password" id="login-pass" name="password" placeholder="••••••••" required />
+                <svg class="input-icon" viewBox="0 0 24 24">
+                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                  <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                </svg>
+                <button type="button" class="toggle-pass" data-target="login-pass">
+                  <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                </button>
+              </div>
+              <div class="field-error" id="err-login-pass">Ingresa tu contraseña.</div>
+            </div>
+
+            <button type="submit" class="btn-submit" id="btn-login">
+              <div class="spinner"></div>
+              <span class="btn-label">Entrar al portal</span>
+            </button>
+          </form>
+
+          <p class="switch-mode">¿Primera vez? <a href="#" data-switch="registro">Regístrate aquí</a></p>
+        </div>
+
+        <!-- REGISTRO EMPLEADO -->
+        <div class="form-panel" id="panel-registro">
+          <h1 class="form-title">Crear cuenta</h1>
+          <p class="form-subtitle">Ingresa el código de tu empresa para registrarte.</p>
+
+          <div class="alert" id="alert-registro">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            <span id="alert-registro-msg">Ocurrió un error al registrar.</span>
+          </div>
+
+          <form id="form-registro" novalidate>
+
+            <div class="form-group">
+              <label for="reg-codigo">Código de empresa</label>
+              <div class="input-wrap">
+                <input type="text" id="reg-codigo" name="codigo_empresa"
+                  placeholder="Ej: T01" maxlength="10" required />
+                <svg class="input-icon" viewBox="0 0 24 24">
+                  <rect x="2" y="7" width="20" height="14" rx="2" ry="2"/>
+                  <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>
+                </svg>
+              </div>
+              <!-- Badge empresa verificada -->
+              <div class="empresa-verified" id="empresa-verified">
+                <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+                <span id="empresa-nombre-badge">Empresa verificada</span>
+              </div>
+              <p class="cupos-badge" id="cupos-badge"></p>
+              <div class="field-error" id="err-reg-codigo">Código de empresa no encontrado.</div>
+            </div>
+
+            <div class="form-group">
+              <label for="reg-nombre">Nombre completo</label>
+              <div class="input-wrap">
+                <input type="text" id="reg-nombre" name="nombre" placeholder="Tu nombre completo" required />
+                <svg class="input-icon" viewBox="0 0 24 24">
+                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                  <circle cx="12" cy="7" r="4"/>
+                </svg>
+              </div>
+              <div class="field-error" id="err-reg-nombre">El nombre es obligatorio.</div>
+            </div>
+
+            <div class="form-group">
+              <label for="reg-mail">Correo corporativo</label>
+              <div class="input-wrap">
+                <input type="email" id="reg-mail" name="mail_corporativo"
+                  placeholder="tu@empresa.com" required />
+                <svg class="input-icon" viewBox="0 0 24 24">
+                  <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+                  <polyline points="22,6 12,13 2,6"/>
+                </svg>
+              </div>
+              <div class="field-error" id="err-reg-mail">Ingresa un correo válido.</div>
+            </div>
+
+            <div class="form-group">
+              <label for="reg-telefono">Teléfono <span style="color:var(--text-muted)">(opcional)</span></label>
+              <div class="input-wrap">
+                <input type="tel" id="reg-telefono" name="telefono" placeholder="6691234567" maxlength="15" />
+                <svg class="input-icon" viewBox="0 0 24 24">
+                  <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.61 3.18 2 2 0 0 1 3.6 1h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.6a16 16 0 0 0 6 6l.96-.96a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/>
+                </svg>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="reg-pass">Contraseña</label>
+              <div class="input-wrap input-with-toggle">
+                <input type="password" id="reg-pass" name="password"
+                  placeholder="Mínimo 8 caracteres" required />
+                <svg class="input-icon" viewBox="0 0 24 24">
+                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                  <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                </svg>
+                <button type="button" class="toggle-pass" data-target="reg-pass">
+                  <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                </button>
+              </div>
+              <div class="field-error" id="err-reg-pass">Mínimo 8 caracteres.</div>
+            </div>
+
+            <button type="submit" class="btn-submit" id="btn-registro" disabled>
+              <div class="spinner"></div>
+              <span class="btn-label">Crear cuenta</span>
+            </button>
+          </form>
+
+          <p class="switch-mode">¿Ya tienes cuenta? <a href="#" data-switch="login">Inicia sesión</a></p>
+        </div>
+
+      </div>
+    </main>
+  </div>
+
+  <script>
+    // @ts-nocheck
+
+    let empresaVerificada = false;
+    let cuposDisponibles  = 0;
+    let verificarTimer    = null;
+
+    // ── TABS ──
+    document.getElementById('tab-login').addEventListener('click', () => switchTab('login'));
+    document.getElementById('tab-registro').addEventListener('click', () => switchTab('registro'));
+
+    // Links data-switch
+    document.querySelectorAll('[data-switch]').forEach(a => {
+      a.addEventListener('click', e => {
+        e.preventDefault();
+        switchTab(a.getAttribute('data-switch'));
+      });
+    });
+
+    // Toggle contraseña
+    document.querySelectorAll('.toggle-pass[data-target]').forEach(btn => {
+      btn.addEventListener('click', () => togglePass(btn.getAttribute('data-target'), btn));
+    });
+
+    // Verificar empresa al escribir
+    document.getElementById('reg-codigo').addEventListener('input', e => {
+      verificarEmpresa(e.target.value);
+    });
+
+    function switchTab(tab) {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.form-panel').forEach(p => p.classList.remove('active'));
+      document.getElementById('tab-' + tab).classList.add('active');
+      document.getElementById('panel-' + tab).classList.add('active');
+      document.querySelectorAll('.alert').forEach(a => a.classList.remove('show'));
+    }
+
+    function togglePass(inputId, btn) {
+      const input = document.getElementById(inputId);
+      const isPass = input.type === 'password';
+      input.type = isPass ? 'text' : 'password';
+      btn.querySelector('svg').innerHTML = isPass
+        ? '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/>'
+        : '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>';
+    }
+
+    function verificarEmpresa(codigo) {
+      clearTimeout(verificarTimer);
+      const badge      = document.getElementById('empresa-verified');
+      const cuposBadge = document.getElementById('cupos-badge');
+      const errCod     = document.getElementById('err-reg-codigo');
+      const btnReg     = document.getElementById('btn-registro');
+
+      badge.classList.remove('show');
+      cuposBadge.classList.remove('show', 'warning');
+      errCod.classList.remove('show');
+      empresaVerificada = false;
+      btnReg.disabled   = true;
+
+      if (codigo.length < 2) return;
+
+      verificarTimer = setTimeout(async () => {
+        try {
+          const res  = await fetch(`/api/empresa/verificar?codigo=${encodeURIComponent(codigo.toUpperCase())}`);
+          const data = await res.json();
+
+          if (data.existe) {
+            empresaVerificada = true;
+            cuposDisponibles  = data.cupos_disponibles;
+            document.getElementById('empresa-nombre-badge').textContent = `✓ ${data.nombre}`;
+            badge.classList.add('show');
+            cuposBadge.classList.add('show');
+            if (data.cupos_disponibles <= 0) {
+              cuposBadge.textContent = 'Sin cupos disponibles — Esta empresa ya alcanzó su límite.';
+              cuposBadge.classList.add('warning');
+              btnReg.disabled = true;
+            } else {
+              cuposBadge.textContent = `${data.cupos_disponibles} cupo(s) disponible(s)`;
+              btnReg.disabled = false;
+            }
+          } else {
+            errCod.classList.add('show');
+            btnReg.disabled = true;
+          }
+        } catch { /* silencioso */ }
+      }, 500);
+    }
+
+    function validateEmail(e) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e); }
+    function showError(id, show) { document.getElementById(id).classList.toggle('show', show); }
+
+    // ── FORM LOGIN ──
+    document.getElementById('form-login').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const mail = document.getElementById('login-mail').value.trim();
+      const pass = document.getElementById('login-pass').value;
+
+      showError('err-login-mail', !validateEmail(mail));
+      showError('err-login-pass', !pass);
+      if (!validateEmail(mail) || !pass) return;
+
+      const btn = document.getElementById('btn-login');
+      btn.disabled = true; btn.classList.add('loading');
+      document.getElementById('alert-login').classList.remove('show');
+
+      try {
+        const res  = await fetch('/api/empleado/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mail_corporativo: mail, password: pass })
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          window.location.href = '/empleado/bienvenida';
+        } else {
+          document.getElementById('alert-login-msg').textContent = data.message || 'Correo o contraseña incorrectos.';
+          document.getElementById('alert-login').classList.add('show');
+        }
+      } catch {
+        document.getElementById('alert-login-msg').textContent = 'Error de conexión. Intenta de nuevo.';
+        document.getElementById('alert-login').classList.add('show');
+      } finally {
+        btn.disabled = false; btn.classList.remove('loading');
+      }
+    });
+
+    // ── FORM REGISTRO ──
+    document.getElementById('form-registro').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const codigo   = document.getElementById('reg-codigo').value.trim().toUpperCase();
+      const nombre   = document.getElementById('reg-nombre').value.trim();
+      const mail     = document.getElementById('reg-mail').value.trim();
+      const telefono = document.getElementById('reg-telefono').value.trim();
+      const pass     = document.getElementById('reg-pass').value;
+
+      showError('err-reg-codigo', !empresaVerificada);
+      showError('err-reg-nombre', !nombre);
+      showError('err-reg-mail',   !validateEmail(mail));
+      showError('err-reg-pass',   pass.length < 8);
+
+      if (!empresaVerificada || !nombre || !validateEmail(mail) || pass.length < 8) return;
+      if (cuposDisponibles <= 0) return;
+
+      const btn = document.getElementById('btn-registro');
+      btn.disabled = true; btn.classList.add('loading');
+      document.getElementById('alert-registro').classList.remove('show');
+
+      try {
+        const res  = await fetch('/api/empleado/registro', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ codigo_empresa: codigo, nombre, mail_corporativo: mail, telefono, password: pass })
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          window.location.href = '/empleado/bienvenida';
+        } else {
+          document.getElementById('alert-registro-msg').textContent = data.message || 'Error al registrar.';
+          document.getElementById('alert-registro').classList.add('show');
+          btn.disabled = false; btn.classList.remove('loading');
+        }
+      } catch {
+        document.getElementById('alert-registro-msg').textContent = 'Error de conexión.';
+        document.getElementById('alert-registro').classList.add('show');
+        btn.disabled = false; btn.classList.remove('loading');
+      }
+    });
+
+    // Abrir tab por parámetro URL
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('tab') === 'registro') switchTab('registro');
+  </script>
+</body>
+</html>

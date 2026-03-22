@@ -1,6 +1,18 @@
 ---
 // src/pages/empresa/auth.astro
 // Login y Registro de empresas — Threat Zero
+export const prerender = false;
+
+// Si ya hay sesión activa, ir directo al dashboard
+const session = Astro.cookies.get('empresa_session');
+if (session?.value) {
+  try {
+    const s = JSON.parse(session.value);
+    if (s.codigo) return Astro.redirect('/empresa/dashboard');
+  } catch {
+    Astro.cookies.delete('empresa_session', { path: '/' });
+  }
+}
 ---
 
 <!DOCTYPE html>
@@ -247,7 +259,6 @@
     }
 
     .tab-btn {
-    text-decoration: none;
       padding: 0.65rem;
       border: none;
       border-radius: calc(var(--radius-md) - 4px);
@@ -261,7 +272,6 @@
     }
 
     .tab-btn.active {
-      text-decoration: none;
       background: var(--bg-card);
       color: var(--text-primary);
       box-shadow: 0 1px 4px rgba(0,0,0,0.4);
@@ -616,8 +626,8 @@
 
         <!-- Tabs -->
         <div class="tabs" role="tablist">
-          <button class="tab-btn active" id="tab-login"    role="tab" onclick="switchTab('/empresa/auth')" ><a href="/empresa/auth">Iniciar sesión</a></button>
-          <button class="tab-btn"        id="tab-registro" role="tab" onclick="switchTab('/empresa/auth?tab=registro')"><a href="/empresa/auth?tab=registro">Registrarse</a></button>
+          <button class="tab-btn active" id="tab-login"    role="tab">Iniciar sesión</button>
+          <button class="tab-btn"        id="tab-registro" role="tab">Registrarse</button>
         </div>
 
         <!-- ══ FORMULARIO: LOGIN ══ -->
@@ -665,7 +675,7 @@
                   <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
                   <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
                 </svg>
-                <button type="button" class="toggle-pass" onclick="togglePass('login-pass', this)" aria-label="Ver contraseña">
+                <button type="button" class="toggle-pass" data-target="login-pass" aria-label="Ver contraseña">
                   <svg id="eye-login" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                 </button>
               </div>
@@ -679,7 +689,7 @@
           </form>
 
           <p class="switch-mode">
-            ¿No tienes cuenta? <a href="/empresa/auth?tab=registro" onclick="switchTab('registro'); return false;">Registra tu empresa</a>
+            ¿No tienes cuenta? <a href="#" data-switch="registro">Registra tu empresa</a>
           </p>
         </div>
 
@@ -792,7 +802,7 @@
                   <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
                   <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
                 </svg>
-                <button type="button" class="toggle-pass" onclick="togglePass('reg-pass', this)" aria-label="Ver contraseña">
+                <button type="button" class="toggle-pass" data-target="reg-pass" aria-label="Ver contraseña">
                   <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                 </button>
               </div>
@@ -818,7 +828,7 @@
                   <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
                   <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
                 </svg>
-                <button type="button" class="toggle-pass" onclick="togglePass('reg-pass2', this)" aria-label="Ver contraseña">
+                <button type="button" class="toggle-pass" data-target="reg-pass2" aria-label="Ver contraseña">
                   <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                 </button>
               </div>
@@ -832,58 +842,78 @@
           </form>
 
           <p class="switch-mode">
-            ¿Ya tienes cuenta? <a href="/empresa/auth" onclick="switchTab('login'); return false;">Inicia sesión</a>
+            ¿Ya tienes cuenta? <a href="#" data-switch="login">Inicia sesión</a>
           </p>
         </div>
 
       </div>
+
+      <!-- Enlace a portal de empleados -->
+      <div style="text-align:center; margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid var(--border);">
+        <p style="font-size:0.8rem; color:var(--text-muted)">
+          ¿Eres empleado? 
+          <a href="/empleado/auth" style="color:var(--accent); text-decoration:none; font-weight:500;">
+            Accede al portal de empleados →
+          </a>
+        </p>
+      </div>
+
     </main>
   </div>
 
   <script>
     // @ts-nocheck
-    // ── TAB SWITCHING ──
+
+    // ── TABS ──
+    document.getElementById('tab-login').addEventListener('click', () => switchTab('login'));
+    document.getElementById('tab-registro').addEventListener('click', () => switchTab('registro'));
+
+    // Links data-switch
+    document.querySelectorAll('[data-switch]').forEach(a => {
+      a.addEventListener('click', e => {
+        e.preventDefault();
+        switchTab(a.getAttribute('data-switch'));
+      });
+    });
+
+    // Botones toggle contraseña data-target
+    document.querySelectorAll('.toggle-pass[data-target]').forEach(btn => {
+      btn.addEventListener('click', () => togglePass(btn.getAttribute('data-target'), btn));
+    });
+
+    // Input checkStrength
+    const regPassInput = document.getElementById('reg-pass');
+    if (regPassInput) regPassInput.addEventListener('input', e => checkStrength(e.target.value));
+
     function switchTab(tab) {
       document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
       document.querySelectorAll('.form-panel').forEach(p => p.classList.remove('active'));
       document.getElementById('tab-' + tab).classList.add('active');
       document.getElementById('panel-' + tab).classList.add('active');
-      // Limpiar alertas
       document.querySelectorAll('.alert').forEach(a => a.classList.remove('show'));
     }
 
-    // Abrir tab según parámetro URL
-const params = new URLSearchParams(window.location.search);
-if (params.get('tab') === 'registro') {
-  switchTab('registro');
-}
-
-    // ── TOGGLE CONTRASEÑA ──
     function togglePass(inputId, btn) {
       const input = document.getElementById(inputId);
       const isPass = input.type === 'password';
       input.type = isPass ? 'text' : 'password';
-      // Ícono: ojo abierto / cerrado
       btn.querySelector('svg').innerHTML = isPass
         ? '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/>'
         : '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>';
     }
 
-    // ── PASSWORD STRENGTH ──
     function checkStrength(val) {
       const wrap = document.getElementById('pass-strength');
       const fill = document.getElementById('strength-fill');
       const text = document.getElementById('strength-text');
       if (!val) { wrap.classList.remove('show'); return; }
       wrap.classList.add('show');
-
       let score = 0;
       if (val.length >= 8)  score++;
       if (val.length >= 12) score++;
       if (/[A-Z]/.test(val)) score++;
       if (/[0-9]/.test(val)) score++;
       if (/[^A-Za-z0-9]/.test(val)) score++;
-
       const levels = [
         { pct: '20%', color: '#ff4d6a', label: 'Muy débil' },
         { pct: '40%', color: '#ff4d6a', label: 'Débil' },
@@ -898,7 +928,6 @@ if (params.get('tab') === 'registro') {
       text.style.color = lvl.color;
     }
 
-    // ── VALIDACIÓN ──
     function showError(id, show) {
       document.getElementById(id).classList.toggle('show', show);
     }
@@ -912,7 +941,6 @@ if (params.get('tab') === 'registro') {
       e.preventDefault();
       const email = document.getElementById('login-email').value.trim();
       const pass  = document.getElementById('login-pass').value;
-      let valid = true;
 
       showError('err-login-email', !validateEmail(email));
       showError('err-login-pass',  !pass);
@@ -924,24 +952,20 @@ if (params.get('tab') === 'registro') {
       document.getElementById('alert-login').classList.remove('show');
 
       try {
-        const res = await fetch('/api/empresa/login', {
+        const res  = await fetch('/api/empresa/login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email, password: pass })
         });
         const data = await res.json();
-
         if (res.ok && data.success) {
-          // Redirigir al dashboard
           window.location.href = '/empresa/dashboard';
         } else {
-          document.getElementById('alert-login-msg').textContent =
-            data.message || 'Correo o contraseña incorrectos.';
+          document.getElementById('alert-login-msg').textContent = data.message || 'Correo o contraseña incorrectos.';
           document.getElementById('alert-login').classList.add('show');
         }
-      } catch (err) {
-        document.getElementById('alert-login-msg').textContent =
-          'Error de conexión. Intenta de nuevo.';
+      } catch {
+        document.getElementById('alert-login-msg').textContent = 'Error de conexión. Intenta de nuevo.';
         document.getElementById('alert-login').classList.add('show');
       } finally {
         btn.disabled = false;
@@ -959,7 +983,6 @@ if (params.get('tab') === 'registro') {
       const pass      = document.getElementById('reg-pass').value;
       const pass2     = document.getElementById('reg-pass2').value;
 
-      // Validaciones
       showError('err-reg-codigo',    !codigo || codigo.length > 10 || /\s/.test(codigo));
       showError('err-reg-nombre',    !nombre);
       showError('err-reg-empleados', !empleados || empleados < 1);
@@ -976,29 +999,30 @@ if (params.get('tab') === 'registro') {
       document.getElementById('alert-registro').classList.remove('show');
 
       try {
-        const res = await fetch('/api/empresa/registro', {
+        const res  = await fetch('/api/empresa/registro', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ codigo, nombre, cantidad_empleados: empleados, email, password: pass })
         });
         const data = await res.json();
-
         if (res.ok && data.success) {
           window.location.href = '/empresa/dashboard';
         } else {
-          document.getElementById('alert-registro-msg').textContent =
-            data.message || 'Ocurrió un error al registrar.';
+          document.getElementById('alert-registro-msg').textContent = data.message || 'Ocurrió un error al registrar.';
           document.getElementById('alert-registro').classList.add('show');
         }
-      } catch (err) {
-        document.getElementById('alert-registro-msg').textContent =
-          'Error de conexión. Intenta de nuevo.';
+      } catch {
+        document.getElementById('alert-registro-msg').textContent = 'Error de conexión. Intenta de nuevo.';
         document.getElementById('alert-registro').classList.add('show');
       } finally {
         btn.disabled = false;
         btn.classList.remove('loading');
       }
     });
+
+    // Abrir tab por parámetro URL
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('tab') === 'registro') switchTab('registro');
   </script>
 </body>
 </html>
